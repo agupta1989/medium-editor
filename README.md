@@ -10,7 +10,7 @@ MediumEditor has been written using vanilla JavaScript, no additional frameworks
 
 [![Sauce Test Status](https://saucelabs.com/browser-matrix/mediumeditor.svg)](https://saucelabs.com/u/mediumeditor)
 
-![Supported Browsers](https://cloud.githubusercontent.com/assets/2444240/12874138/d3960a04-cd9b-11e5-8cc5-8136d82cf5f6.png)
+![Supportd Browsers](https://cloud.githubusercontent.com/assets/2444240/12874138/d3960a04-cd9b-11e5-8cc5-8136d82cf5f6.png)
 
 [![NPM info](https://nodei.co/npm/medium-editor.png?downloads=true)](https://www.npmjs.com/package/medium-editor)
 
@@ -137,9 +137,9 @@ var editor = new MediumEditor('.editable', {
         diffTop: -10,
         firstButtonClass: 'medium-editor-button-first',
         lastButtonClass: 'medium-editor-button-last',
-        relativeContainer: null,
         standardizeSelectionStart: false,
         static: false,
+        relativeContainer: null,
         /* options which only apply when static is true */
         align: 'center',
         sticky: false,
@@ -155,9 +155,9 @@ var editor = new MediumEditor('.editable', {
 * __diffTop__: value in pixels to be added to the Y axis positioning of the toolbar. Default: `-10`
 * __firstButtonClass__: CSS class added to the first button in the toolbar. Default: `'medium-editor-button-first'`
 * __lastButtonClass__: CSS class added to the last button in the toolbar. Default: `'medium-editor-button-last'`
-* __relativeContainer__: DOMElement to append the toolbar to instead of the body.  When passed, the toolbar will also be positioned `relative` instead of `absolute`. Default: `null`
 * __standardizeSelectionStart__: enables/disables standardizing how the beginning of a range is decided between browsers whenever the selected text is analyzed for updating toolbar buttons status. Default: `false`
 * __static__: enable/disable the toolbar always displaying in the same location relative to the medium-editor element. Default: `false`
+* __relativeContainer__: Toolbar is appended relative to a given DOM-Node instead of appending it to the body and position it absolute.
 
 ##### Options which only apply when the `static` option is being used:
 * __align__: `left`|`center`|`right` - When the __static__ option is `true`, this aligns the static toolbar relative to the medium-editor element. Default: `center`
@@ -251,7 +251,6 @@ var editor = new MediumEditor('.editable', {
 * __hideDelay__: time in milliseconds to show the anchor tag preview after the mouse has left the anchor tag. Default: `500`
 * __previewValueSelector__: the default selector to locate where to put the activeAnchor value in the preview. You should only need to override this if you've modified the way in which the anchor-preview extension renders. Default: `'a'`
 * __showWhenToolbarIsVisible__: determines whether the anchor tag preview shows up when the toolbar is visible. You should set this value to true if the static option for the toolbar is true and you want the preview to show at the same time. Default: `false`
-* __showOnEmptyLinks__: determines whether the anchor tag preview shows up on link with href as '' or '#something'. You should set this value to false if you do not want the preview to show up in such use cases. Default: `true`
 
 To disable the anchor preview, set the value of the `anchorPreview` option to `false`:
 ```javascript
@@ -466,6 +465,7 @@ var editor = new MediumEditor('.editable', {
 });
 ```
 
+
 ## Buttons
 
 By default, MediumEditor supports buttons for most of the commands for `document.execCommand()` that are well-supported across all its supported browsers.
@@ -524,8 +524,6 @@ View the [MediumEditor Object API documentation](API.md) on the Wiki for details
 * __MediumEditor(elements, options)__:  Creates an instance of MediumEditor
 * __.destroy()__: tears down the editor if already setup, removing all DOM elements and event handlers
 * __.setup()__: rebuilds the editor if it has already been destroyed, recreating DOM elements and attaching event handlers
-* __.addElements()__: add elements to an already initialized instance of MediumEditor
-* __.removeElements()__: remove elements from an already initialized instance of MediumEditor
 
 ### Event Methods
 * __.on(target, event, listener, useCapture)__: attach a listener to a DOM event which will be detached when MediumEditor is deactivated
@@ -556,60 +554,9 @@ View the [MediumEditor Object API documentation](API.md) on the Wiki for details
 
 ### Helper Methods
 * __.delay(fn)__: delay any function from being executed by the amount of time passed as the `delay` option
-* __.getContent(index)__: gets the trimmed `innerHTML` of the element at `index`
 * __.getExtensionByName(name)__: get a reference to an extension with the specified name
-* __.resetContent(element)__: reset the content of all elements or a specific element to its value when added to the editor initially
 * __.serialize()__: returns a JSON object with elements contents
 * __.setContent(html, index)__: sets the `innerHTML` to `html` of the element at `index`
-
-### Static Methods/Properties
-* __.getEditorFromElement(element)__: retrieve the instance of MediumEditor that is monitoring the provided editor element
-* __.version__: the version information for the MediumEditor library
-
-## Dynamically add/remove elements to your instance
-
-It is possible to dynamically add new elements to your existing MediumEditor instance:
-
-```javascript
-var editor = new MediumEditor('.editable');
-editor.subscribe('editableInput', this._handleEditableInput.bind(this));
-
-// imagine an ajax fetch/any other dynamic functionality which will add new '.editable' elements to the DOM
-
-editor.addElements('.editable');
-// OR editor.addElements(document.getElementsByClassName('editable'));
-// OR editor.addElements(document.querySelectorAll('.editable'));
-```
-
-Passing an elements or array of elements to `addElements(elements)` will:
-* Add the given element or array of elements to the internal `this.elements` array.
-* Ensure the element(s) are initialized with the proper attributes and event handlers as if the element had been passed during instantiation of the editor.
-* For any `<textarea>` elements:
-  * Hide the `<textarea>`
-  * Create a new `<div contenteditable=true>` element and add it to the elements array.
-  * Ensure the 2 elements remain sync'd.
-* Be intelligent enough to run the necessary code only once per element, no matter how often you will call it.
-
-### Removing elements dynamically
-
-Straight forward, just call `removeElements` with the element or array of elements you to want to tear down. Each element itself will remain a contenteditable - it will just remove all event handlers and all references to it so you can safely remove it from DOM.
-
-```javascript
-editor.removeElements(document.querySelector('#myElement'));
-// OR editor.removeElements(document.getElementById('myElement'));
-// OR editor.removeElements('#myElement');
-
-// in case you have jQuery and don't exactly know when an element was removed, for example after routing state change
-var removedElements = [];
-editor.elements.forEach(function (element) {
-    // check if the element is still available in current DOM
-    if (!$(element).parents('body').length) {
-        removedElements.push(element);
-    }
-});
-
-editor.removeElements(removedElements);
-```
 
 ## Capturing DOM changes
 
@@ -632,7 +579,7 @@ This is handy when you need to capture any modifications to the contenteditable 
 
 Why is this interesting and why should you use this event instead of just attaching to the `input` event on the contenteditable element?
 
-So for most modern browsers (Chrome, Firefox, Safari, etc.), the `input` event works just fine. In fact, `editableInput` is just a proxy for the `input` event in those browsers. However, the `input` event [is not supported for contenteditable elements in IE 9-11](https://connect.microsoft.com/IE/feedback/details/794285/ie10-11-input-event-does-not-fire-on-div-with-contenteditable-set) and is _mostly_ supported in Microsoft Edge, but not fully.
+So for most modern browsers (Chrome, Firefox, Safari, etc.), the `input` event works just fine. Infact, `editableInput` is just a proxy for the `input` event in those browsers. However, the `input` event [is not supported for contenteditable elements in IE 9-11](https://connect.microsoft.com/IE/feedback/details/794285/ie10-11-input-event-does-not-fire-on-div-with-contenteditable-set) and is _mostly_ supported in Microsoft Edge, but not fully.
 
 So, to properly support the `editableInput` event in Internet Explorer and Microsoft Edge, MediumEditor uses a combination of the `selectionchange` and `keypress` events, as well as monitoring calls to `document.execCommand`.
 

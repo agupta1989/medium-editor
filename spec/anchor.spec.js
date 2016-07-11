@@ -338,7 +338,7 @@ describe('Anchor Button TestCase', function () {
                 link,
                 anchorExtension = editor.getExtensionByName('anchor'),
                 expectedOpts = {
-                    value: 'http://te%20s%20t.com/',
+                    url: 'http://te%20s%20t.com/',
                     target: '_self'
                 };
 
@@ -352,7 +352,7 @@ describe('Anchor Button TestCase', function () {
 
             link = editor.elements[0].querySelector('a');
             expect(link).not.toBeNull();
-            expect(link.href).toBe(expectedOpts.value);
+            expect(link.href).toBe(expectedOpts.url);
         });
         it('should not change spaces to %20 if linkValidation is set to false', function () {
             var editor = this.newMediumEditor('.editor', {
@@ -363,14 +363,14 @@ describe('Anchor Button TestCase', function () {
                 link,
                 anchorExtension = editor.getExtensionByName('anchor'),
                 expectedOpts = {
-                    value: 'http://te s t.com/',
+                    url: 'http://te s t.com/',
                     target: '_self'
                 };
 
             spyOn(editor, 'execAction').and.callThrough();
 
             selectElementContentsAndFire(editor.elements[0]);
-            anchorExtension.showForm(expectedOpts.value);
+            anchorExtension.showForm(expectedOpts.url);
             fireEvent(anchorExtension.getForm().querySelector('a.medium-editor-toolbar-save'), 'click');
 
             // Chrome, Edge, and IE will automatically escape the href once it's set on the link
@@ -449,7 +449,7 @@ describe('Anchor Button TestCase', function () {
                 keyCode: MediumEditor.util.keyCode.ENTER
             });
             opts = {
-                value: 'http://test.com',
+                url: 'http://test.com',
                 target: '_self',
                 buttonClass: 'btn btn-default'
             };
@@ -525,7 +525,7 @@ describe('Anchor Button TestCase', function () {
             });
 
             expect(editor.createLink).toHaveBeenCalledWith({
-                value: 'http://www.example.com',
+                url: 'http://www.example.com',
                 target: '_blank'
             });
             expect(window.getSelection().toString()).toBe('ipsum', 'selected text should remain selected');
@@ -558,7 +558,7 @@ describe('Anchor Button TestCase', function () {
             });
 
             expect(editor.createLink).toHaveBeenCalledWith({
-                value: 'http://www.example.com',
+                url: 'http://www.example.com',
                 target: '_self'
             });
 
@@ -598,7 +598,7 @@ describe('Anchor Button TestCase', function () {
             });
 
             expect(editor.createLink).toHaveBeenCalledWith({
-                value: 'http://www.example.com',
+                url: 'http://www.example.com',
                 target: '_self'
             });
 
@@ -637,7 +637,7 @@ describe('Anchor Button TestCase', function () {
             });
 
             expect(editor.createLink).toHaveBeenCalledWith({
-                value: 'http://www.example.com',
+                url: 'http://www.example.com',
                 target: '_self'
             });
 

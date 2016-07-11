@@ -6,10 +6,10 @@
         name: 'fontname',
         action: 'fontName',
         aria: 'change font name',
-        contentDefault: '&#xB1;', // ±
+        contentDefault: '<b>Aa</b>',
         contentFA: '<i class="fa fa-font"></i>',
 
-        fonts: ['', 'Arial', 'Verdana', 'Times New Roman'],
+        fonts: ['', 'Arial', 'Arial Black', 'Courier New', 'Helvetica', 'Comic Sans MS', 'Tahoma', 'Times New Roman', 'Verdana'],
 
         init: function () {
             MediumEditor.extensions.form.prototype.init.apply(this, arguments);
@@ -110,7 +110,7 @@
                 select.appendChild(option);
             }
 
-            select.className = 'medium-editor-toolbar-select';
+            select.className = 'medium-editor-toolbar-select-font-name';
             form.appendChild(select);
 
             // Handle typing in the textbox
@@ -142,15 +142,25 @@
         },
 
         getSelect: function () {
-            return this.getForm().querySelector('select.medium-editor-toolbar-select');
+            return this.getForm().querySelector('select.medium-editor-toolbar-select-font-name');
         },
 
         clearFontName: function () {
             MediumEditor.selection.getSelectedElements(this.document).forEach(function (el) {
-                if (el.nodeName.toLowerCase() === 'font' && el.hasAttribute('face')) {
-                    el.removeAttribute('face');
+                if (el.nodeName.toLowerCase() === 'span' || el.nodeName.toLowerCase() === 'li') {
+                    el.style['font-family'] = '';
                 }
             });
+        },
+
+        checkForParentLiTag: function (node) {
+            if (node.id === this.base.elements[0].id) {
+                throw Error('At least one list element should be present !');
+            } else if (node.tagName !== 'LI') {
+                return this.checkForParentLiTag(node.parentNode);
+            } else {
+                return node;
+            }
         },
 
         handleFontChange: function () {
@@ -158,7 +168,93 @@
             if (font === '') {
                 this.clearFontName();
             } else {
-                this.execAction('fontName', { value: font });
+                //this.execAction('fontName', { name: font });
+                var range = MediumEditor.selection.getSelectionRange(this.document),
+                node = MediumEditor.selection.getSelectedParentElement(range),
+                endNode = range.endContainer.parentNode,
+                textSelected = this.document.getSelection().toString(),
+                startNode = node !== endNode ? this.checkForParentLiTag(node) : node,
+                parentText = startNode.innerText.replace(/\n$/, '');
+
+                if (textSelected === parentText) {
+                    this.unwrapFontName(startNode);
+                    startNode.style['font-family'] = font;
+                } else if (textSelected !== parentText) {
+                    var isNewLinePresent = this.isMultipleLine(startNode, endNode);
+                    if (isNewLinePresent) {
+                        this.applySiblingChanges(startNode, endNode, font);
+                    } else {
+                        this.applyInsertHTML(font, range);
+                    }
+                }
+            }
+        },
+
+        unwrapFontName: function (node) {
+            var childs = node.getElementsByTagName('span');
+            for (var index = 0; index < childs.length; index++) {
+                childs[index].style.removeProperty('font-family');
+            }
+        },
+
+        isMultipleLine: function (startNode, endNode) {
+            return (startNode !== endNode);
+        },
+
+        applyInsertHTML: function (font, range) {
+            this.insertHTML(font, range);
+        },
+
+        chunkWrapper: function (range, parent) {
+            if (MediumEditor.selection.getSelectedParentElement(range).tagName === parent) {
+                return MediumEditor.selection.getSelectedParentElement(range);
+            } else {
+                var span = this.document.createElement('span');
+                span.setAttribute('type', 'di');
+                return span;
+            }
+        },
+
+        insertHTML: function (font, range) {
+            // var sel, range;
+            // if (window.getSelection && (sel = window.getSelection()).rangeCount) {
+            //    range = sel.getRangeAt(0);
+            var content = range.extractContents();
+            range.collapse(true);
+            var span = this.chunkWrapper(range, 'span');
+
+            span.style['font-family'] = font;
+            span.appendChild(
+              this.document.createTextNode(content.textContent)
+            );
+
+            range.insertNode(span);
+            // Move the caret immediately after the inserted span
+            range.setStartAfter(span);
+            range.collapse(true);
+            this.document.getSelection().removeAllRanges();
+            this.document.getSelection().addRange(range);
+            //}
+        },
+
+        applySiblingChanges: function (startNode, endNode, font) {
+            while (startNode !== null) {
+
+                if (startNode.tagName === 'LI') {
+                    this.unwrapFontName(startNode);
+                    startNode.style['font-family'] = font;
+                }
+                if (startNode.tagName === 'UL' || startNode.tagName === 'OL') {
+                    startNode = startNode.firstElementChild;
+                    continue;
+                }
+                if (startNode === endNode) {
+                    break;
+                } else if (startNode.nextElementSibling !== null) {
+                    startNode = startNode.nextElementSibling;
+                } else {
+                    startNode = startNode.parentNode.nextElementSibling;
+                }
             }
         },
 

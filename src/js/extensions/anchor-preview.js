@@ -21,11 +21,6 @@
          */
         showWhenToolbarIsVisible: false,
 
-        /* showOnEmptyLinks: [boolean]
-        * determines whether the anchor tag preview shows up on links with href="" or href="#something"
-        */
-        showOnEmptyLinks: true,
-
         init: function () {
             this.anchorPreview = this.createPreview();
 
@@ -34,11 +29,6 @@
             this.attachToEditables();
         },
 
-        getInteractionElements: function () {
-            return this.getPreviewElement();
-        },
-
-        // TODO: Remove this function in 6.0.0
         getPreviewElement: function () {
             return this.anchorPreview;
         },
@@ -135,15 +125,6 @@
 
         attachToEditables: function () {
             this.subscribe('editableMouseover', this.handleEditableMouseover.bind(this));
-            this.subscribe('positionedToolbar', this.handlePositionedToolbar.bind(this));
-        },
-
-        handlePositionedToolbar: function () {
-            // If the toolbar is visible and positioned, we don't need to hide the preview
-            // when showWhenToolbarIsVisible is true
-            if (!this.showWhenToolbarIsVisible) {
-                this.hidePreview();
-            }
         },
 
         handleClick: function (event) {
@@ -160,7 +141,7 @@
                 this.base.delay(function () {
                     if (activeAnchor) {
                         var opts = {
-                            value: activeAnchor.attributes.href.value,
+                            url: activeAnchor.attributes.href.value,
                             target: activeAnchor.getAttribute('target'),
                             buttonClass: activeAnchor.getAttribute('class')
                         };
@@ -189,8 +170,7 @@
             // Detect empty href attributes
             // The browser will make href="" or href="#top"
             // into absolute urls when accessed as event.target.href, so check the html
-            if (!this.showOnEmptyLinks &&
-                (!/href=["']\S+["']/.test(target.outerHTML) || /href=["']#\S+["']/.test(target.outerHTML))) {
+            if (!/href=["']\S+["']/.test(target.outerHTML) || /href=["']#\S+["']/.test(target.outerHTML)) {
                 return true;
             }
 

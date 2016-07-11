@@ -7,6 +7,8 @@
     <link href="http://netdna.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.css" rel="stylesheet">
     <link rel="stylesheet" href="../dist/css/medium-editor.css">
     <link rel="stylesheet" href="../dist/css/themes/default.css">
+	<script src="https://cdn.lukej.me/rangy/1.2.3/rangy-core.js"></script>
+    <script src="https://cdn.lukej.me/rangy/1.2.3/rangy-cssclassapplier.js"></script>
 </head>
 <body>
     <a href="https://github.com/yabwe/medium-editor" class="github-link"><img style="z-index: 100;position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png" alt="Fork me on GitHub"></a>
@@ -45,11 +47,36 @@
     <p style="text-align: center;"><small><a style="color: #333;" target="_blank" href="http://www.goodreads.com/reader/475-great-expectations">Source</a></small></p>
     <script src="../dist/js/medium-editor.js"></script>
     <script>
+	rangy.init();
+	        var HighlighterButton = MediumEditor.extensions.button.extend({
+            name: 'highlighter',
+            tagNames: ['mark'],
+            contentDefault: '<b>H</b>',
+            contentFA: '<i class="fa fa-paint-brush"></i>',
+            aria: 'Hightlight',
+            action: 'highlight',
+
+            init: function () {
+                MediumEditor.extensions.button.prototype.init.call(this);
+
+                this.classApplier = rangy.createCssClassApplier('highlight', {
+                    elementTagName: 'mark',
+                    normalize: true
+                });
+            },
+
+            handleClick: function (event) {
+                this.classApplier.toggleSelection();
+            }
+        });
         var editor = new MediumEditor('.editable', {
                 toolbar: {
-                    buttons: ['bold', 'italic', 'underline', 'strikethrough', 'quote', 'anchor', 'image', 'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull', 'superscript', 'subscript', 'orderedlist', 'unorderedlist', 'pre', 'outdent', 'indent', 'h2', 'h3'],
+                    buttons: ['bold', 'italic', 'underline', 'strikethrough', 'quote', 'anchor', 'image', 'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull', 'superscript', 'subscript', 'orderedlist', 'unorderedlist', 'pre', 'outdent', 'indent', 'h2', 'h3', 'highlighter'],
                     static: true,
                     sticky: true
+                },
+				extensions: {
+                    'highlighter': new HighlighterButton()
                 }
             });
 

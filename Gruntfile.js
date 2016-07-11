@@ -26,8 +26,6 @@ module.exports = function (grunt) {
             'src/js/extensions/auto-link.js',
             'src/js/extensions/file-dragging.js',
             'src/js/extensions/keyboard-commands.js',
-            'src/js/extensions/fontname.js',
-            'src/js/extensions/fontsize.js',
             'src/js/extensions/paste.js',
             'src/js/extensions/placeholder.js',
             'src/js/extensions/toolbar.js',
@@ -116,49 +114,6 @@ module.exports = function (grunt) {
         ],
         options: {
             config: '.jscsrc'
-        }
-    };
-
-    gruntConfig.jasmine = {
-        suite: {
-            src: [srcFiles],
-            options: {
-                specs: ['spec/*.spec.js'],
-                helpers: 'spec/helpers/*.js',
-                vendor: [
-                    'node_modules/lodash/index.js',
-                    'spec/vendor/jasmine-jsreporter.js',
-                    'spec/vendor/jasmine-jsreporter-script.js'
-                ],
-                polyfills: [
-                    'src/js/polyfills.js'
-                ],
-                styles: 'dist/css/*.css',
-                junit: {
-                    path: 'reports/jasmine/',
-                    consolidate: true
-                },
-                keepRunner: true,
-                template: require('grunt-template-jasmine-istanbul'),
-                templateOptions: {
-                    coverage: 'reports/jasmine/coverage.json',
-                    report: [{
-                        type: 'lcov',
-                        options: {
-                            dir: 'reports/jasmine/lcov'
-                        }
-                    }],
-                    files: srcFiles.concat('!src/js/extensions/deprecated/*')
-                },
-                summary: true
-            }
-        },
-        spec: {
-            src: 'src/js/**/*.js',
-            options: {
-                specs: ['spec/<%= globalConfig.file %>.spec.js'],
-                helpers: 'spec/helpers/*.js'
-            }
         }
     };
 
@@ -331,14 +286,14 @@ module.exports = function (grunt) {
     });
 
     if (parseInt(process.env.TRAVIS_PULL_REQUEST, 10) > 0) {
-        grunt.registerTask('travis', ['jshint', 'jscs', 'jasmine:suite', 'csslint', 'coveralls']);
+        grunt.registerTask('travis', ['jshint', 'jscs', 'csslint', 'coveralls']);
     } else {
-        grunt.registerTask('travis', ['connect', 'jshint', 'jscs', 'jasmine:suite', 'csslint', 'saucelabs-jasmine', 'coveralls']);
+        grunt.registerTask('travis', ['connect', 'jshint', 'jscs', 'csslint', 'saucelabs-jasmine', 'coveralls']);
     }
 
-    grunt.registerTask('test', ['jshint', 'jscs', 'concat', 'jasmine:suite', 'csslint']);
+    grunt.registerTask('test', ['jshint', 'jscs', 'concat', 'csslint']);
     grunt.registerTask('sauce', ['connect', 'saucelabs-jasmine']);
-    grunt.registerTask('js', ['jshint', 'jscs', 'concat', 'jasmine:suite', 'uglify']);
+    grunt.registerTask('js', ['jshint', 'jscs', 'concat', 'uglify']);
     grunt.registerTask('css', ['sass', 'autoprefixer', 'cssmin', 'csslint']);
     grunt.registerTask('default', ['js', 'css']);
 

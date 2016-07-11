@@ -1,26 +1,6 @@
 (function () {
     'use strict';
 
-    function isElementDescendantOfExtension(extensions, element) {
-        return extensions.some(function (extension) {
-            if (typeof extension.getInteractionElements !== 'function') {
-                return false;
-            }
-
-            var extensionElements = extension.getInteractionElements();
-            if (!extensionElements) {
-                return false;
-            }
-
-            if (!Array.isArray(extensionElements)) {
-                extensionElements = [extensionElements];
-            }
-            return extensionElements.some(function (el) {
-                return MediumEditor.util.isDescendant(el, element, true);
-            });
-        });
-    }
-
     var Events = function (instance) {
         this.base = instance;
         this.options = this.base.options;
@@ -35,26 +15,18 @@
 
         // Helpers for event handling
 
-        attachDOMEvent: function (targets, event, listener, useCapture) {
-            targets = MediumEditor.util.isElement(targets) || [window, document].indexOf(targets) > -1 ? [targets] : targets;
-
-            Array.prototype.forEach.call(targets, function (target) {
-                target.addEventListener(event, listener, useCapture);
-                this.events.push([target, event, listener, useCapture]);
-            }.bind(this));
+        attachDOMEvent: function (target, event, listener, useCapture) {
+            target.addEventListener(event, listener, useCapture);
+            this.events.push([target, event, listener, useCapture]);
         },
 
-        detachDOMEvent: function (targets, event, listener, useCapture) {
-            var index, e;
-            targets = MediumEditor.util.isElement(targets) || [window, document].indexOf(targets) > -1 ? [targets] : targets;
-
-            Array.prototype.forEach.call(targets, function (target) {
-                index = this.indexOfListener(target, event, listener, useCapture);
-                if (index !== -1) {
-                    e = this.events.splice(index, 1)[0];
-                    e[0].removeEventListener(e[1], e[2], e[3]);
-                }
-            }.bind(this));
+        detachDOMEvent: function (target, event, listener, useCapture) {
+            var index = this.indexOfListener(target, event, listener, useCapture),
+                e;
+            if (index !== -1) {
+                e = this.events.splice(index, 1)[0];
+                e[0].removeEventListener(e[1], e[2], e[3]);
+            }
         },
 
         indexOfListener: function (target, event, listener, useCapture) {
@@ -73,30 +45,6 @@
             while (e) {
                 e[0].removeEventListener(e[1], e[2], e[3]);
                 e = this.events.pop();
-            }
-        },
-
-        detachAllEventsFromElement: function (element) {
-            var filtered = this.events.filter(function (e) {
-                return e && e[0].getAttribute && e[0].getAttribute('medium-editor-index') === element.getAttribute('medium-editor-index');
-            });
-
-            for (var i = 0, len = filtered.length; i < len; i++) {
-                var e = filtered[i];
-                this.detachDOMEvent(e[0], e[1], e[2], e[3]);
-            }
-        },
-
-        // Attach all existing handlers to a new element
-        attachAllEventsToElement: function (element) {
-            if (this.listeners['editableInput']) {
-                this.contentCache[element.getAttribute('medium-editor-index')] = element.innerHTML;
-            }
-
-            if (this.eventsCache) {
-                this.eventsCache.forEach(function (e) {
-                    this.attachDOMEvent(element, e['name'], e['handler'].bind(this));
-                }, this);
             }
         },
 
@@ -291,15 +239,15 @@
                     break;
                 case 'editableInput':
                     // setup cache for knowing when the content has changed
-                    this.contentCache = {};
+                    this.contentCache = [];
                     this.base.elements.forEach(function (element) {
                         this.contentCache[element.getAttribute('medium-editor-index')] = element.innerHTML;
-                    }, this);
 
-                    // Attach to the 'oninput' event, handled correctly by most browsers
-                    if (this.InputEventOnContenteditableSupported) {
-                        this.attachToEachElement('input', this.handleInput);
-                    }
+                        // Attach to the 'oninput' event, handled correctly by most browsers
+                        if (this.InputEventOnContenteditableSupported) {
+                            this.attachDOMEvent(element, 'input', this.handleInput.bind(this));
+                        }
+                    }.bind(this));
 
                     // For browsers which don't support the input event on contenteditable (IE)
                     // we'll attach to 'selectionchange' on the document and 'keypress' on the editables
@@ -360,8 +308,6 @@
                     // Detecting drop on the contenteditables
                     this.attachToEachElement('drop', this.handleDrop);
                     break;
-                // TODO: We need to have a custom 'paste' event separate from 'editablePaste'
-                // Need to think about the way to introduce this without breaking folks
                 case 'editablePaste':
                     // Detecting paste on the contenteditables
                     this.attachToEachElement('paste', this.handlePaste);
@@ -371,26 +317,9 @@
         },
 
         attachToEachElement: function (name, handler) {
-            // build our internal cache to know which element got already what handler attached
-            if (!this.eventsCache) {
-                this.eventsCache = [];
-            }
-
             this.base.elements.forEach(function (element) {
                 this.attachDOMEvent(element, name, handler.bind(this));
             }, this);
-
-            this.eventsCache.push({ 'name': name, 'handler': handler });
-        },
-
-        cleanupElement: function (element) {
-            var index = element.getAttribute('medium-editor-index');
-            if (index) {
-                this.detachAllEventsFromElement(element);
-                if (this.contentCache) {
-                    delete this.contentCache[index];
-                }
-            }
         },
 
         focusElement: function (element) {
@@ -399,16 +328,21 @@
         },
 
         updateFocus: function (target, eventObj) {
-            var hadFocus = this.base.getFocusedElement(),
+            var toolbar = this.base.getExtensionByName('toolbar'),
+                toolbarEl = toolbar ? toolbar.getToolbarElement() : null,
+                anchorPreview = this.base.getExtensionByName('anchor-preview'),
+                previewEl = (anchorPreview && anchorPreview.getPreviewElement) ? anchorPreview.getPreviewElement() : null,
+                hadFocus = this.base.getFocusedElement(),
                 toFocus;
 
-            // For clicks, we need to know if the mousedown that caused the click happened inside the existing focused element
-            // or one of the extension elements.  If so, we don't want to focus another element
+            // For clicks, we need to know if the mousedown that caused the click happened inside the existing focused element.
+            // If so, we don't want to focus another element
             if (hadFocus &&
                     eventObj.type === 'click' &&
                     this.lastMousedownTarget &&
                     (MediumEditor.util.isDescendant(hadFocus, this.lastMousedownTarget, true) ||
-                     isElementDescendantOfExtension(this.base.extensions, this.lastMousedownTarget))) {
+                     MediumEditor.util.isDescendant(toolbarEl, this.lastMousedownTarget, true) ||
+                     MediumEditor.util.isDescendant(previewEl, this.lastMousedownTarget, true))) {
                 toFocus = hadFocus;
             }
 
@@ -424,9 +358,10 @@
                 }, this);
             }
 
-            // Check if the target is external (not part of the editor, toolbar, or any other extension)
+            // Check if the target is external (not part of the editor, toolbar, or anchorpreview)
             var externalEvent = !MediumEditor.util.isDescendant(hadFocus, target, true) &&
-                                !isElementDescendantOfExtension(this.base.extensions, target);
+                                !MediumEditor.util.isDescendant(toolbarEl, target, true) &&
+                                !MediumEditor.util.isDescendant(previewEl, target, true);
 
             if (toFocus !== hadFocus) {
                 // If element has focus, and focus is going outside of editor

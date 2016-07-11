@@ -189,10 +189,6 @@
 
         // Toolbar accessors
 
-        getInteractionElements: function () {
-            return this.getToolbarElement();
-        },
-
         getToolbarElement: function () {
             if (!this.toolbar) {
                 this.toolbar = this.createToolbar();
@@ -419,8 +415,13 @@
             }
 
             // If we don't have a 'valid' selection -> hide toolbar
-            if (!MediumEditor.selection.selectionContainsContent(this.document) ||
-                (this.allowMultiParagraphSelection === false && this.multipleBlockElementsSelected())) {
+            // Commented by Aman
+            // if (!MediumEditor.selection.selectionContainsContent(this.document) ||
+            //     (this.allowMultiParagraphSelection === false && this.multipleBlockElementsSelected())) {
+            var selectionRange = MediumEditor.selection.getSelectionRange(this.document),
+            isSelected = (selectionRange.endOffset - selectionRange.startOffset) > 0 ||
+            (selectionRange.startOffset - selectionRange.endOffset) > 0;
+            if (!isSelected || (this.allowMultiParagraphSelection === false && this.multipleBlockElementsSelected())) {
                 return this.hideToolbar();
             }
 
@@ -518,26 +519,30 @@
 
         setToolbarPosition: function () {
             var container = this.base.getFocusedElement(),
-                selection = this.window.getSelection();
+                selection = this.window.getSelection(),
+                anchorPreview;
 
             // If there isn't a valid selection, bail
             if (!container) {
                 return this;
             }
 
-            if (this.static || !selection.isCollapsed) {
+            if (this.static && !this.relativeContainer) {
+                this.showToolbar();
+                this.positionStaticToolbar(container);
+            } else if (!selection.isCollapsed) {
                 this.showToolbar();
 
                 // we don't need any absolute positioning if relativeContainer is set
                 if (!this.relativeContainer) {
-                    if (this.static) {
-                        this.positionStaticToolbar(container);
-                    } else {
-                        this.positionToolbar(selection);
-                    }
+                    this.positionToolbar(selection);
                 }
+            }
 
-                this.trigger('positionedToolbar', {}, this.base.getFocusedElement());
+            anchorPreview = this.base.getExtensionByName('anchor-preview');
+
+            if (anchorPreview && typeof anchorPreview.hidePreview === 'function') {
+                anchorPreview.hidePreview();
             }
         },
 
@@ -623,16 +628,23 @@
                 toolbarWidth = toolbarElement.offsetWidth,
                 halfOffsetWidth = toolbarWidth / 2,
                 buttonHeight = 50,
+                topValue,
                 defaultLeft = this.diffLeft - halfOffsetWidth;
 
             if (boundary.top < buttonHeight) {
                 toolbarElement.classList.add('medium-toolbar-arrow-over');
                 toolbarElement.classList.remove('medium-toolbar-arrow-under');
-                toolbarElement.style.top = buttonHeight + boundary.bottom - this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
+                topValue = buttonHeight + boundary.bottom - this.diffTop + this.window.pageYOffset - toolbarHeight;
+                toolbarElement.style.top = (topValue < 0 ? 0 : topValue) + 'px';
+                // commented by dialedin
+                //toolbarElement.style.top = boundary.top + this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
             } else {
                 toolbarElement.classList.add('medium-toolbar-arrow-under');
                 toolbarElement.classList.remove('medium-toolbar-arrow-over');
-                toolbarElement.style.top = boundary.top + this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
+                topValue = buttonHeight + boundary.bottom - this.diffTop + this.window.pageYOffset - toolbarHeight;
+                toolbarElement.style.top = (topValue < 0 ? 0 : topValue) + 'px';
+                // commented by dialedin
+                //toolbarElement.style.top = boundary.top + this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
             }
 
             if (middleBoundary < halfOffsetWidth) {

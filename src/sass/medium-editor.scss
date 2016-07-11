@@ -9,10 +9,7 @@
 @import "util/clearfix";
 
 // contenteditable rules
-.medium-editor-element {
-    word-wrap: break-word;
-    min-height: 30px;
-
+[data-medium-editor-element] {
     img {
         max-width: 100%;
     }

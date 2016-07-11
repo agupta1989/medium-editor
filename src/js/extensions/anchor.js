@@ -150,12 +150,12 @@
                 targetCheckbox = this.getAnchorTargetCheckbox(),
                 buttonCheckbox = this.getAnchorButtonCheckbox();
 
-            opts = opts || { value: '' };
+            opts = opts || { url: '' };
             // TODO: This is for backwards compatability
             // We don't need to support the 'string' argument in 6.0.0
             if (typeof opts === 'string') {
                 opts = {
-                    value: opts
+                    url: opts
                 };
             }
 
@@ -164,7 +164,7 @@
             MediumEditor.extensions.form.prototype.showForm.apply(this);
             this.setToolbarPosition();
 
-            input.value = opts.value;
+            input.value = opts.url;
             input.focus();
 
             // If we have a target checkbox, we want it to be checked/unchecked
@@ -201,11 +201,11 @@
             var targetCheckbox = this.getAnchorTargetCheckbox(),
                 buttonCheckbox = this.getAnchorButtonCheckbox(),
                 opts = {
-                    value: this.getInput().value.trim()
+                    url: this.getInput().value.trim()
                 };
 
             if (this.linkValidation) {
-                opts.value = this.checkLinkFormat(opts.value);
+                opts.url = this.checkLinkFormat(opts.url);
             }
 
             opts.target = '_self';

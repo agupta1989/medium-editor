@@ -385,8 +385,7 @@ if (!("classList" in document.createElement("_"))) {
 
 (function (root, factory) {
     'use strict';
-    var isElectron = typeof module === 'object' && process && process.versions && process.versions.electron;
-    if (!isElectron && typeof module === 'object') {
+    if (typeof module === 'object') {
         module.exports = factory;
     } else if (typeof define === 'function' && define.amd) {
         define(function () {
@@ -455,7 +454,6 @@ MediumEditor.extensions = {};
         isMac: (window.navigator.platform.toUpperCase().indexOf('MAC') >= 0),
 
         // https://github.com/jashkenas/underscore
-        // Lonely letter MUST USE the uppercase code
         keyCode: {
             BACKSPACE: 8,
             TAB: 9,
@@ -464,8 +462,7 @@ MediumEditor.extensions = {};
             SPACE: 32,
             DELETE: 46,
             K: 75, // K keycode, and not k
-            M: 77,
-            V: 86
+            M: 77
         },
 
         /**
@@ -900,7 +897,8 @@ MediumEditor.extensions = {};
                     range = range.cloneRange();
                     range.setStartAfter(lastNode);
                     range.collapse(true);
-                    MediumEditor.selection.selectRange(doc, range);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
                 }
                 res = true;
             }
@@ -1459,17 +1457,6 @@ MediumEditor.extensions = {};
             } else {
                 el.parentNode.removeChild(el);
             }
-        },
-
-        guid: function () {
-            function _s4() {
-                return Math
-                    .floor((1 + Math.random()) * 0x10000)
-                    .toString(16)
-                    .substring(1);
-            }
-
-            return _s4() + _s4() + '-' + _s4() + '-' + _s4() + '-' + _s4() + '-' + _s4() + _s4() + _s4();
         }
     };
 
@@ -1653,19 +1640,6 @@ MediumEditor.extensions = {};
          * isActive(), and setActive()
          */
         setInactive: undefined,
-
-        /* getInteractionElements: [function ()]
-         *
-         * If the extension renders any elements that the user can interact with,
-         * this method should be implemented and return the root element or an array
-         * containing all of the root elements. MediumEditor will call this function
-         * during interaction to see if the user clicked on something outside of the editor.
-         * The elements are used to check if the target element of a click or
-         * other user event is a descendant of any extension elements.
-         * This way, the editor can also count user interaction within editor elements as
-         * interactions with the editor, and thus not trigger 'blur'
-         */
-        getInteractionElements: undefined,
 
         /************************ Helpers ************************
          * The following are helpers that are either set by MediumEditor
@@ -1964,7 +1938,9 @@ MediumEditor.extensions = {};
                 range = this.importSelectionMoveCursorPastAnchor(selectionState, range);
             }
 
-            this.selectRange(doc, range);
+            var sel = doc.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
         },
 
         // Utility method called from importSelection only
@@ -2357,12 +2333,16 @@ MediumEditor.extensions = {};
         },
 
         selectNode: function (node, doc) {
-            var range = doc.createRange();
+            var range = doc.createRange(),
+                sel = doc.getSelection();
+
             range.selectNodeContents(node);
-            this.selectRange(doc, range);
+            sel.removeAllRanges();
+            sel.addRange(range);
         },
 
         select: function (doc, startNode, startOffset, endNode, endOffset) {
+            doc.getSelection().removeAllRanges();
             var range = doc.createRange();
             range.setStart(startNode, startOffset);
             if (endNode) {
@@ -2370,7 +2350,7 @@ MediumEditor.extensions = {};
             } else {
                 range.collapse(true);
             }
-            this.selectRange(doc, range);
+            doc.getSelection().addRange(range);
             return range;
         },
 
@@ -2407,13 +2387,6 @@ MediumEditor.extensions = {};
             return selection.getRangeAt(0);
         },
 
-        selectRange: function (ownerDocument, range) {
-            var selection = ownerDocument.getSelection();
-
-            selection.removeAllRanges();
-            selection.addRange(range);
-        },
-
         // http://stackoverflow.com/questions/1197401/how-can-i-get-the-element-the-caret-is-in-with-javascript-when-using-contentedi
         // by You
         getSelectionStart: function (ownerDocument) {
@@ -2430,26 +2403,6 @@ MediumEditor.extensions = {};
 (function () {
     'use strict';
 
-    function isElementDescendantOfExtension(extensions, element) {
-        return extensions.some(function (extension) {
-            if (typeof extension.getInteractionElements !== 'function') {
-                return false;
-            }
-
-            var extensionElements = extension.getInteractionElements();
-            if (!extensionElements) {
-                return false;
-            }
-
-            if (!Array.isArray(extensionElements)) {
-                extensionElements = [extensionElements];
-            }
-            return extensionElements.some(function (el) {
-                return MediumEditor.util.isDescendant(el, element, true);
-            });
-        });
-    }
-
     var Events = function (instance) {
         this.base = instance;
         this.options = this.base.options;
@@ -2464,26 +2417,18 @@ MediumEditor.extensions = {};
 
         // Helpers for event handling
 
-        attachDOMEvent: function (targets, event, listener, useCapture) {
-            targets = MediumEditor.util.isElement(targets) || [window, document].indexOf(targets) > -1 ? [targets] : targets;
-
-            Array.prototype.forEach.call(targets, function (target) {
-                target.addEventListener(event, listener, useCapture);
-                this.events.push([target, event, listener, useCapture]);
-            }.bind(this));
+        attachDOMEvent: function (target, event, listener, useCapture) {
+            target.addEventListener(event, listener, useCapture);
+            this.events.push([target, event, listener, useCapture]);
         },
 
-        detachDOMEvent: function (targets, event, listener, useCapture) {
-            var index, e;
-            targets = MediumEditor.util.isElement(targets) || [window, document].indexOf(targets) > -1 ? [targets] : targets;
-
-            Array.prototype.forEach.call(targets, function (target) {
-                index = this.indexOfListener(target, event, listener, useCapture);
-                if (index !== -1) {
-                    e = this.events.splice(index, 1)[0];
-                    e[0].removeEventListener(e[1], e[2], e[3]);
-                }
-            }.bind(this));
+        detachDOMEvent: function (target, event, listener, useCapture) {
+            var index = this.indexOfListener(target, event, listener, useCapture),
+                e;
+            if (index !== -1) {
+                e = this.events.splice(index, 1)[0];
+                e[0].removeEventListener(e[1], e[2], e[3]);
+            }
         },
 
         indexOfListener: function (target, event, listener, useCapture) {
@@ -2502,30 +2447,6 @@ MediumEditor.extensions = {};
             while (e) {
                 e[0].removeEventListener(e[1], e[2], e[3]);
                 e = this.events.pop();
-            }
-        },
-
-        detachAllEventsFromElement: function (element) {
-            var filtered = this.events.filter(function (e) {
-                return e && e[0].getAttribute && e[0].getAttribute('medium-editor-index') === element.getAttribute('medium-editor-index');
-            });
-
-            for (var i = 0, len = filtered.length; i < len; i++) {
-                var e = filtered[i];
-                this.detachDOMEvent(e[0], e[1], e[2], e[3]);
-            }
-        },
-
-        // Attach all existing handlers to a new element
-        attachAllEventsToElement: function (element) {
-            if (this.listeners['editableInput']) {
-                this.contentCache[element.getAttribute('medium-editor-index')] = element.innerHTML;
-            }
-
-            if (this.eventsCache) {
-                this.eventsCache.forEach(function (e) {
-                    this.attachDOMEvent(element, e['name'], e['handler'].bind(this));
-                }, this);
             }
         },
 
@@ -2720,15 +2641,15 @@ MediumEditor.extensions = {};
                     break;
                 case 'editableInput':
                     // setup cache for knowing when the content has changed
-                    this.contentCache = {};
+                    this.contentCache = [];
                     this.base.elements.forEach(function (element) {
                         this.contentCache[element.getAttribute('medium-editor-index')] = element.innerHTML;
-                    }, this);
 
-                    // Attach to the 'oninput' event, handled correctly by most browsers
-                    if (this.InputEventOnContenteditableSupported) {
-                        this.attachToEachElement('input', this.handleInput);
-                    }
+                        // Attach to the 'oninput' event, handled correctly by most browsers
+                        if (this.InputEventOnContenteditableSupported) {
+                            this.attachDOMEvent(element, 'input', this.handleInput.bind(this));
+                        }
+                    }.bind(this));
 
                     // For browsers which don't support the input event on contenteditable (IE)
                     // we'll attach to 'selectionchange' on the document and 'keypress' on the editables
@@ -2789,8 +2710,6 @@ MediumEditor.extensions = {};
                     // Detecting drop on the contenteditables
                     this.attachToEachElement('drop', this.handleDrop);
                     break;
-                // TODO: We need to have a custom 'paste' event separate from 'editablePaste'
-                // Need to think about the way to introduce this without breaking folks
                 case 'editablePaste':
                     // Detecting paste on the contenteditables
                     this.attachToEachElement('paste', this.handlePaste);
@@ -2800,26 +2719,9 @@ MediumEditor.extensions = {};
         },
 
         attachToEachElement: function (name, handler) {
-            // build our internal cache to know which element got already what handler attached
-            if (!this.eventsCache) {
-                this.eventsCache = [];
-            }
-
             this.base.elements.forEach(function (element) {
                 this.attachDOMEvent(element, name, handler.bind(this));
             }, this);
-
-            this.eventsCache.push({ 'name': name, 'handler': handler });
-        },
-
-        cleanupElement: function (element) {
-            var index = element.getAttribute('medium-editor-index');
-            if (index) {
-                this.detachAllEventsFromElement(element);
-                if (this.contentCache) {
-                    delete this.contentCache[index];
-                }
-            }
         },
 
         focusElement: function (element) {
@@ -2828,16 +2730,21 @@ MediumEditor.extensions = {};
         },
 
         updateFocus: function (target, eventObj) {
-            var hadFocus = this.base.getFocusedElement(),
+            var toolbar = this.base.getExtensionByName('toolbar'),
+                toolbarEl = toolbar ? toolbar.getToolbarElement() : null,
+                anchorPreview = this.base.getExtensionByName('anchor-preview'),
+                previewEl = (anchorPreview && anchorPreview.getPreviewElement) ? anchorPreview.getPreviewElement() : null,
+                hadFocus = this.base.getFocusedElement(),
                 toFocus;
 
-            // For clicks, we need to know if the mousedown that caused the click happened inside the existing focused element
-            // or one of the extension elements.  If so, we don't want to focus another element
+            // For clicks, we need to know if the mousedown that caused the click happened inside the existing focused element.
+            // If so, we don't want to focus another element
             if (hadFocus &&
                     eventObj.type === 'click' &&
                     this.lastMousedownTarget &&
                     (MediumEditor.util.isDescendant(hadFocus, this.lastMousedownTarget, true) ||
-                     isElementDescendantOfExtension(this.base.extensions, this.lastMousedownTarget))) {
+                     MediumEditor.util.isDescendant(toolbarEl, this.lastMousedownTarget, true) ||
+                     MediumEditor.util.isDescendant(previewEl, this.lastMousedownTarget, true))) {
                 toFocus = hadFocus;
             }
 
@@ -2853,9 +2760,10 @@ MediumEditor.extensions = {};
                 }, this);
             }
 
-            // Check if the target is external (not part of the editor, toolbar, or any other extension)
+            // Check if the target is external (not part of the editor, toolbar, or anchorpreview)
             var externalEvent = !MediumEditor.util.isDescendant(hadFocus, target, true) &&
-                                !isElementDescendantOfExtension(this.base.extensions, target);
+                                !MediumEditor.util.isDescendant(toolbarEl, target, true) &&
+                                !MediumEditor.util.isDescendant(previewEl, target, true);
 
             if (toFocus !== hadFocus) {
                 // If element has focus, and focus is going outside of editor
@@ -3773,12 +3681,12 @@ MediumEditor.extensions = {};
                 targetCheckbox = this.getAnchorTargetCheckbox(),
                 buttonCheckbox = this.getAnchorButtonCheckbox();
 
-            opts = opts || { value: '' };
+            opts = opts || { url: '' };
             // TODO: This is for backwards compatability
             // We don't need to support the 'string' argument in 6.0.0
             if (typeof opts === 'string') {
                 opts = {
-                    value: opts
+                    url: opts
                 };
             }
 
@@ -3787,7 +3695,7 @@ MediumEditor.extensions = {};
             MediumEditor.extensions.form.prototype.showForm.apply(this);
             this.setToolbarPosition();
 
-            input.value = opts.value;
+            input.value = opts.url;
             input.focus();
 
             // If we have a target checkbox, we want it to be checked/unchecked
@@ -3824,11 +3732,11 @@ MediumEditor.extensions = {};
             var targetCheckbox = this.getAnchorTargetCheckbox(),
                 buttonCheckbox = this.getAnchorButtonCheckbox(),
                 opts = {
-                    value: this.getInput().value.trim()
+                    url: this.getInput().value.trim()
                 };
 
             if (this.linkValidation) {
-                opts.value = this.checkLinkFormat(opts.value);
+                opts.url = this.checkLinkFormat(opts.url);
             }
 
             opts.target = '_self';
@@ -3978,11 +3886,6 @@ MediumEditor.extensions = {};
          */
         showWhenToolbarIsVisible: false,
 
-        /* showOnEmptyLinks: [boolean]
-        * determines whether the anchor tag preview shows up on links with href="" or href="#something"
-        */
-        showOnEmptyLinks: true,
-
         init: function () {
             this.anchorPreview = this.createPreview();
 
@@ -3991,11 +3894,6 @@ MediumEditor.extensions = {};
             this.attachToEditables();
         },
 
-        getInteractionElements: function () {
-            return this.getPreviewElement();
-        },
-
-        // TODO: Remove this function in 6.0.0
         getPreviewElement: function () {
             return this.anchorPreview;
         },
@@ -4092,15 +3990,6 @@ MediumEditor.extensions = {};
 
         attachToEditables: function () {
             this.subscribe('editableMouseover', this.handleEditableMouseover.bind(this));
-            this.subscribe('positionedToolbar', this.handlePositionedToolbar.bind(this));
-        },
-
-        handlePositionedToolbar: function () {
-            // If the toolbar is visible and positioned, we don't need to hide the preview
-            // when showWhenToolbarIsVisible is true
-            if (!this.showWhenToolbarIsVisible) {
-                this.hidePreview();
-            }
         },
 
         handleClick: function (event) {
@@ -4117,7 +4006,7 @@ MediumEditor.extensions = {};
                 this.base.delay(function () {
                     if (activeAnchor) {
                         var opts = {
-                            value: activeAnchor.attributes.href.value,
+                            url: activeAnchor.attributes.href.value,
                             target: activeAnchor.getAttribute('target'),
                             buttonClass: activeAnchor.getAttribute('class')
                         };
@@ -4146,8 +4035,7 @@ MediumEditor.extensions = {};
             // Detect empty href attributes
             // The browser will make href="" or href="#top"
             // into absolute urls when accessed as event.target.href, so check the html
-            if (!this.showOnEmptyLinks &&
-                (!/href=["']\S+["']/.test(target.outerHTML) || /href=["']#\S+["']/.test(target.outerHTML))) {
+            if (!/href=["']\S+["']/.test(target.outerHTML) || /href=["']#\S+["']/.test(target.outerHTML)) {
                 return true;
             }
 
@@ -4669,378 +4557,6 @@ MediumEditor.extensions = {};
 
 (function () {
     'use strict';
-
-    var FontNameForm = MediumEditor.extensions.form.extend({
-
-        name: 'fontname',
-        action: 'fontName',
-        aria: 'change font name',
-        contentDefault: '&#xB1;', // ±
-        contentFA: '<i class="fa fa-font"></i>',
-
-        fonts: ['', 'Arial', 'Verdana', 'Times New Roman'],
-
-        init: function () {
-            MediumEditor.extensions.form.prototype.init.apply(this, arguments);
-        },
-
-        // Called when the button the toolbar is clicked
-        // Overrides ButtonExtension.handleClick
-        handleClick: function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (!this.isDisplayed()) {
-                // Get FontName of current selection (convert to string since IE returns this as number)
-                var fontName = this.document.queryCommandValue('fontName') + '';
-                this.showForm(fontName);
-            }
-
-            return false;
-        },
-
-        // Called by medium-editor to append form to the toolbar
-        getForm: function () {
-            if (!this.form) {
-                this.form = this.createForm();
-            }
-            return this.form;
-        },
-
-        // Used by medium-editor when the default toolbar is to be displayed
-        isDisplayed: function () {
-            return this.getForm().style.display === 'block';
-        },
-
-        hideForm: function () {
-            this.getForm().style.display = 'none';
-            this.getSelect().value = '';
-        },
-
-        showForm: function (fontName) {
-            var select = this.getSelect();
-
-            this.base.saveSelection();
-            this.hideToolbarDefaultActions();
-            this.getForm().style.display = 'block';
-            this.setToolbarPosition();
-
-            select.value = fontName || '';
-            select.focus();
-        },
-
-        // Called by core when tearing down medium-editor (destroy)
-        destroy: function () {
-            if (!this.form) {
-                return false;
-            }
-
-            if (this.form.parentNode) {
-                this.form.parentNode.removeChild(this.form);
-            }
-
-            delete this.form;
-        },
-
-        // core methods
-
-        doFormSave: function () {
-            this.base.restoreSelection();
-            this.base.checkSelection();
-        },
-
-        doFormCancel: function () {
-            this.base.restoreSelection();
-            this.clearFontName();
-            this.base.checkSelection();
-        },
-
-        // form creation and event handling
-        createForm: function () {
-            var doc = this.document,
-                form = doc.createElement('div'),
-                select = doc.createElement('select'),
-                close = doc.createElement('a'),
-                save = doc.createElement('a'),
-                option;
-
-            // Font Name Form (div)
-            form.className = 'medium-editor-toolbar-form';
-            form.id = 'medium-editor-toolbar-form-fontname-' + this.getEditorId();
-
-            // Handle clicks on the form itself
-            this.on(form, 'click', this.handleFormClick.bind(this));
-
-            // Add font names
-            for (var i = 0; i<this.fonts.length; i++) {
-                option = doc.createElement('option');
-                option.innerHTML = this.fonts[i];
-                option.value = this.fonts[i];
-                select.appendChild(option);
-            }
-
-            select.className = 'medium-editor-toolbar-select';
-            form.appendChild(select);
-
-            // Handle typing in the textbox
-            this.on(select, 'change', this.handleFontChange.bind(this));
-
-            // Add save buton
-            save.setAttribute('href', '#');
-            save.className = 'medium-editor-toobar-save';
-            save.innerHTML = this.getEditorOption('buttonLabels') === 'fontawesome' ?
-                             '<i class="fa fa-check"></i>' :
-                             '&#10003;';
-            form.appendChild(save);
-
-            // Handle save button clicks (capture)
-            this.on(save, 'click', this.handleSaveClick.bind(this), true);
-
-            // Add close button
-            close.setAttribute('href', '#');
-            close.className = 'medium-editor-toobar-close';
-            close.innerHTML = this.getEditorOption('buttonLabels') === 'fontawesome' ?
-                              '<i class="fa fa-times"></i>' :
-                              '&times;';
-            form.appendChild(close);
-
-            // Handle close button clicks
-            this.on(close, 'click', this.handleCloseClick.bind(this));
-
-            return form;
-        },
-
-        getSelect: function () {
-            return this.getForm().querySelector('select.medium-editor-toolbar-select');
-        },
-
-        clearFontName: function () {
-            MediumEditor.selection.getSelectedElements(this.document).forEach(function (el) {
-                if (el.nodeName.toLowerCase() === 'font' && el.hasAttribute('face')) {
-                    el.removeAttribute('face');
-                }
-            });
-        },
-
-        handleFontChange: function () {
-            var font = this.getSelect().value;
-            if (font === '') {
-                this.clearFontName();
-            } else {
-                this.execAction('fontName', { value: font });
-            }
-        },
-
-        handleFormClick: function (event) {
-            // make sure not to hide form when clicking inside the form
-            event.stopPropagation();
-        },
-
-        handleSaveClick: function (event) {
-            // Clicking Save -> create the font size
-            event.preventDefault();
-            this.doFormSave();
-        },
-
-        handleCloseClick: function (event) {
-            // Click Close -> close the form
-            event.preventDefault();
-            this.doFormCancel();
-        }
-    });
-
-    MediumEditor.extensions.fontName = FontNameForm;
-}());
-
-(function () {
-    'use strict';
-
-    var FontSizeForm = MediumEditor.extensions.form.extend({
-
-        name: 'fontsize',
-        action: 'fontSize',
-        aria: 'increase/decrease font size',
-        contentDefault: '&#xB1;', // ±
-        contentFA: '<i class="fa fa-text-height"></i>',
-
-        init: function () {
-            MediumEditor.extensions.form.prototype.init.apply(this, arguments);
-        },
-
-        // Called when the button the toolbar is clicked
-        // Overrides ButtonExtension.handleClick
-        handleClick: function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (!this.isDisplayed()) {
-                // Get fontsize of current selection (convert to string since IE returns this as number)
-                var fontSize = this.document.queryCommandValue('fontSize') + '';
-                this.showForm(fontSize);
-            }
-
-            return false;
-        },
-
-        // Called by medium-editor to append form to the toolbar
-        getForm: function () {
-            if (!this.form) {
-                this.form = this.createForm();
-            }
-            return this.form;
-        },
-
-        // Used by medium-editor when the default toolbar is to be displayed
-        isDisplayed: function () {
-            return this.getForm().style.display === 'block';
-        },
-
-        hideForm: function () {
-            this.getForm().style.display = 'none';
-            this.getInput().value = '';
-        },
-
-        showForm: function (fontSize) {
-            var input = this.getInput();
-
-            this.base.saveSelection();
-            this.hideToolbarDefaultActions();
-            this.getForm().style.display = 'block';
-            this.setToolbarPosition();
-
-            input.value = fontSize || '';
-            input.focus();
-        },
-
-        // Called by core when tearing down medium-editor (destroy)
-        destroy: function () {
-            if (!this.form) {
-                return false;
-            }
-
-            if (this.form.parentNode) {
-                this.form.parentNode.removeChild(this.form);
-            }
-
-            delete this.form;
-        },
-
-        // core methods
-
-        doFormSave: function () {
-            this.base.restoreSelection();
-            this.base.checkSelection();
-        },
-
-        doFormCancel: function () {
-            this.base.restoreSelection();
-            this.clearFontSize();
-            this.base.checkSelection();
-        },
-
-        // form creation and event handling
-        createForm: function () {
-            var doc = this.document,
-                form = doc.createElement('div'),
-                input = doc.createElement('input'),
-                close = doc.createElement('a'),
-                save = doc.createElement('a');
-
-            // Font Size Form (div)
-            form.className = 'medium-editor-toolbar-form';
-            form.id = 'medium-editor-toolbar-form-fontsize-' + this.getEditorId();
-
-            // Handle clicks on the form itself
-            this.on(form, 'click', this.handleFormClick.bind(this));
-
-            // Add font size slider
-            input.setAttribute('type', 'range');
-            input.setAttribute('min', '1');
-            input.setAttribute('max', '7');
-            input.className = 'medium-editor-toolbar-input';
-            form.appendChild(input);
-
-            // Handle typing in the textbox
-            this.on(input, 'change', this.handleSliderChange.bind(this));
-
-            // Add save buton
-            save.setAttribute('href', '#');
-            save.className = 'medium-editor-toobar-save';
-            save.innerHTML = this.getEditorOption('buttonLabels') === 'fontawesome' ?
-                             '<i class="fa fa-check"></i>' :
-                             '&#10003;';
-            form.appendChild(save);
-
-            // Handle save button clicks (capture)
-            this.on(save, 'click', this.handleSaveClick.bind(this), true);
-
-            // Add close button
-            close.setAttribute('href', '#');
-            close.className = 'medium-editor-toobar-close';
-            close.innerHTML = this.getEditorOption('buttonLabels') === 'fontawesome' ?
-                              '<i class="fa fa-times"></i>' :
-                              '&times;';
-            form.appendChild(close);
-
-            // Handle close button clicks
-            this.on(close, 'click', this.handleCloseClick.bind(this));
-
-            return form;
-        },
-
-        getInput: function () {
-            return this.getForm().querySelector('input.medium-editor-toolbar-input');
-        },
-
-        clearFontSize: function () {
-            MediumEditor.selection.getSelectedElements(this.document).forEach(function (el) {
-                if (el.nodeName.toLowerCase() === 'font' && el.hasAttribute('size')) {
-                    el.removeAttribute('size');
-                }
-            });
-        },
-
-        handleSliderChange: function () {
-            var size = this.getInput().value;
-            if (size === '4') {
-                this.clearFontSize();
-            } else {
-                this.execAction('fontSize', { value: size });
-            }
-        },
-
-        handleFormClick: function (event) {
-            // make sure not to hide form when clicking inside the form
-            event.stopPropagation();
-        },
-
-        handleSaveClick: function (event) {
-            // Clicking Save -> create the font size
-            event.preventDefault();
-            this.doFormSave();
-        },
-
-        handleCloseClick: function (event) {
-            // Click Close -> close the form
-            event.preventDefault();
-            this.doFormCancel();
-        }
-    });
-
-    MediumEditor.extensions.fontSize = FontSizeForm;
-}());
-(function () {
-    'use strict';
-
-    /* Helpers and internal variables that don't need to be members of actual paste handler */
-
-    var pasteBinDefaultContent = '%ME_PASTEBIN%',
-        lastRange = null,
-        keyboardPasteEditable = null,
-        stopProp = function (event) {
-            event.stopPropagation();
-        };
-
     /*jslint regexp: true*/
     /*
         jslint does not allow character negation, because the negation
@@ -5050,15 +4566,6 @@ MediumEditor.extensions = {};
     */
     function createReplacements() {
         return [
-            // Remove anything but the contents within the BODY element
-            [new RegExp(/^[\s\S]*<body[^>]*>\s*|\s*<\/body[^>]*>[\s\S]*$/g), ''],
-
-            // cleanup comments added by Chrome when pasting html
-            [new RegExp(/<!--StartFragment-->|<!--EndFragment-->/g), ''],
-
-            // Trailing BR elements
-            [new RegExp(/<br>$/i), ''],
-
             // replace two bogus tags that begin pastes from google docs
             [new RegExp(/<[^>]*docs-internal-guid[^>]*>/gi), ''],
             [new RegExp(/<\/b>(<br[^>]*>)?$/gi), ''],
@@ -5090,46 +4597,12 @@ MediumEditor.extensions = {};
             // Microsoft Word makes these odd tags, like <o:p></o:p>
             [new RegExp(/<\/?o:[a-z]*>/gi), ''],
 
-            // Microsoft Word adds some special elements around list items
-            [new RegExp(/<!\[if !supportLists\]>(((?!<!).)*)<!\[endif]\>/gi), '$1']
+            // cleanup comments added by Chrome when pasting html
+            ['<!--EndFragment-->', ''],
+            ['<!--StartFragment-->', '']
         ];
     }
     /*jslint regexp: false*/
-
-    /**
-     * Gets various content types out of the Clipboard API. It will also get the
-     * plain text using older IE and WebKit API.
-     *
-     * @param {event} event Event fired on paste.
-     * @param {win} reference to window
-     * @param {doc} reference to document
-     * @return {Object} Object with mime types and data for those mime types.
-     */
-    function getClipboardContent(event, win, doc) {
-        var dataTransfer = event.clipboardData || win.clipboardData || doc.dataTransfer,
-            data = {};
-
-        if (!dataTransfer) {
-            return data;
-        }
-
-        // Use old WebKit/IE API
-        if (dataTransfer.getData) {
-            var legacyText = dataTransfer.getData('Text');
-            if (legacyText && legacyText.length > 0) {
-                data['text/plain'] = legacyText;
-            }
-        }
-
-        if (dataTransfer.types) {
-            for (var i = 0; i < dataTransfer.types.length; i++) {
-                var contentType = dataTransfer.types[i];
-                data[contentType] = dataTransfer.getData(contentType);
-            }
-        }
-
-        return data;
-    }
 
     var PasteHandler = MediumEditor.Extension.extend({
         /* Paste Options */
@@ -5174,234 +4647,61 @@ MediumEditor.extensions = {};
             MediumEditor.Extension.prototype.init.apply(this, arguments);
 
             if (this.forcePlainText || this.cleanPastedHTML) {
-                this.subscribe('editableKeydown', this.handleKeydown.bind(this));
-                // We need access to the full event data in paste
-                // so we can't use the editablePaste event here
-                this.getEditorElements().forEach(function (element) {
-                    this.on(element, 'paste', this.handlePaste.bind(this));
-                }, this);
-                this.subscribe('addElement', this.handleAddElement.bind(this));
+                this.subscribe('editablePaste', this.handlePaste.bind(this));
             }
         },
 
-        handleAddElement: function (event, editable) {
-            this.on(editable, 'paste', this.handlePaste.bind(this));
-        },
+        handlePaste: function (event, element) {
+            var paragraphs,
+                html = '',
+                p,
+                dataFormatHTML = 'text/html',
+                dataFormatPlain = 'text/plain',
+                pastedHTML,
+                pastedPlain;
 
-        destroy: function () {
-            // Make sure pastebin is destroyed in case it's still around for some reason
-            if (this.forcePlainText || this.cleanPastedHTML) {
-                this.removePasteBin();
-            }
-        },
-
-        handlePaste: function (event, editable) {
-            if (event.defaultPrevented) {
-                return;
-            }
-
-            var clipboardContent = getClipboardContent(event, this.window, this.document),
-                pastedHTML = clipboardContent['text/html'],
-                pastedPlain = clipboardContent['text/plain'];
-
-            if (this.window.clipboardData && event.clipboardData === undefined && !pastedHTML) {
+            if (this.window.clipboardData && event.clipboardData === undefined) {
+                event.clipboardData = this.window.clipboardData;
                 // If window.clipboardData exists, but event.clipboardData doesn't exist,
                 // we're probably in IE. IE only has two possibilities for clipboard
                 // data format: 'Text' and 'URL'.
                 //
-                // For IE, we'll fallback to 'Text' for text/html
-                pastedHTML = pastedPlain;
+                // Of the two, we want 'Text':
+                dataFormatHTML = 'Text';
+                dataFormatPlain = 'Text';
             }
 
-            if (pastedHTML || pastedPlain) {
+            if (event.clipboardData &&
+                    event.clipboardData.getData &&
+                    !event.defaultPrevented) {
                 event.preventDefault();
 
-                this.doPaste(pastedHTML, pastedPlain, editable);
-            }
-        },
+                pastedHTML = event.clipboardData.getData(dataFormatHTML);
+                pastedPlain = event.clipboardData.getData(dataFormatPlain);
 
-        doPaste: function (pastedHTML, pastedPlain, editable) {
-            var paragraphs,
-                html = '',
-                p;
+                if (this.cleanPastedHTML && pastedHTML) {
+                    return this.cleanPaste(pastedHTML);
+                }
 
-            if (this.cleanPastedHTML && pastedHTML) {
-                return this.cleanPaste(pastedHTML);
-            }
-
-            if (!(this.getEditorOption('disableReturn') || (editable && editable.getAttribute('data-disable-return')))) {
-                paragraphs = pastedPlain.split(/[\r\n]+/g);
-                // If there are no \r\n in data, don't wrap in <p>
-                if (paragraphs.length > 1) {
-                    for (p = 0; p < paragraphs.length; p += 1) {
-                        if (paragraphs[p] !== '') {
-                            html += '<p>' + MediumEditor.util.htmlEntities(paragraphs[p]) + '</p>';
+                if (!(this.getEditorOption('disableReturn') || element.getAttribute('data-disable-return'))) {
+                    paragraphs = pastedPlain.split(/[\r\n]+/g);
+                    // If there are no \r\n in data, don't wrap in <p>
+                    if (paragraphs.length > 1) {
+                        for (p = 0; p < paragraphs.length; p += 1) {
+                            if (paragraphs[p] !== '') {
+                                // commented by dialedin
+                                //html += '<p>' + MediumEditor.util.htmlEntities(paragraphs[p]) + '</p>';
+                                html += MediumEditor.util.htmlEntities(paragraphs[p]) + '<br/>';
+                            }
                         }
+                    } else {
+                        html = MediumEditor.util.htmlEntities(paragraphs[0]);
                     }
                 } else {
-                    html = MediumEditor.util.htmlEntities(paragraphs[0]);
+                    html = MediumEditor.util.htmlEntities(pastedPlain);
                 }
-            } else {
-                html = MediumEditor.util.htmlEntities(pastedPlain);
+                MediumEditor.util.insertHTMLCommand(this.document, html);
             }
-            MediumEditor.util.insertHTMLCommand(this.document, html);
-        },
-
-        handlePasteBinPaste: function (event) {
-            if (event.defaultPrevented) {
-                this.removePasteBin();
-                return;
-            }
-
-            var clipboardContent = getClipboardContent(event, this.window, this.document),
-                pastedHTML = clipboardContent['text/html'],
-                pastedPlain = clipboardContent['text/plain'],
-                editable = keyboardPasteEditable;
-
-            // If we have valid html already, or we're not in cleanPastedHTML mode
-            // we can ignore the paste bin and just paste now
-            if (!this.cleanPastedHTML || pastedHTML) {
-                event.preventDefault();
-                this.removePasteBin();
-                this.doPaste(pastedHTML, pastedPlain, editable);
-
-                // The event handling code listens for paste on the editable element
-                // in order to trigger the editablePaste event.  Since this paste event
-                // is happening on the pastebin, the event handling code never knows about it
-                // So, we have to trigger editablePaste manually
-                this.trigger('editablePaste', { currentTarget: editable, target: editable }, editable);
-                return;
-            }
-
-            // We need to look at the paste bin, so do a setTimeout to let the paste
-            // fall through into the paste bin
-            setTimeout(function () {
-                // Only look for HTML if we're in cleanPastedHTML mode
-                if (this.cleanPastedHTML) {
-                    // If clipboard didn't have HTML, try the paste bin
-                    pastedHTML = this.getPasteBinHtml();
-                }
-
-                // If we needed the paste bin, we're done with it now, remove it
-                this.removePasteBin();
-
-                // Handle the paste with the html from the paste bin
-                this.doPaste(pastedHTML, pastedPlain, editable);
-
-                // The event handling code listens for paste on the editable element
-                // in order to trigger the editablePaste event.  Since this paste event
-                // is happening on the pastebin, the event handling code never knows about it
-                // So, we have to trigger editablePaste manually
-                this.trigger('editablePaste', { currentTarget: editable, target: editable }, editable);
-            }.bind(this), 0);
-        },
-
-        handleKeydown: function (event, editable) {
-            // if it's not Ctrl+V, do nothing
-            if (!(MediumEditor.util.isKey(event, MediumEditor.util.keyCode.V) && MediumEditor.util.isMetaCtrlKey(event))) {
-                return;
-            }
-
-            event.stopImmediatePropagation();
-
-            this.removePasteBin();
-            this.createPasteBin(editable);
-        },
-
-        createPasteBin: function (editable) {
-            var rects,
-                range = MediumEditor.selection.getSelectionRange(this.document),
-                top = this.window.pageYOffset;
-
-            keyboardPasteEditable = editable;
-
-            if (range) {
-                rects = range.getClientRects();
-
-                // on empty line, rects is empty so we grab information from the first container of the range
-                if (rects.length) {
-                    top += rects[0].top;
-                } else {
-                    top += range.startContainer.getBoundingClientRect().top;
-                }
-            }
-
-            lastRange = range;
-
-            var pasteBinElm = this.document.createElement('div');
-            pasteBinElm.id = this.pasteBinId = 'medium-editor-pastebin-' + (+Date.now());
-            pasteBinElm.setAttribute('style', 'border: 1px red solid; position: absolute; top: ' + top + 'px; width: 10px; height: 10px; overflow: hidden; opacity: 0');
-            pasteBinElm.setAttribute('contentEditable', true);
-            pasteBinElm.innerHTML = pasteBinDefaultContent;
-
-            this.document.body.appendChild(pasteBinElm);
-
-            // avoid .focus() to stop other event (actually the paste event)
-            this.on(pasteBinElm, 'focus', stopProp);
-            this.on(pasteBinElm, 'focusin', stopProp);
-            this.on(pasteBinElm, 'focusout', stopProp);
-
-            pasteBinElm.focus();
-
-            MediumEditor.selection.selectNode(pasteBinElm, this.document);
-
-            if (!this.boundHandlePaste) {
-                this.boundHandlePaste = this.handlePasteBinPaste.bind(this);
-            }
-
-            this.on(pasteBinElm, 'paste', this.boundHandlePaste);
-        },
-
-        removePasteBin: function () {
-            if (null !== lastRange) {
-                MediumEditor.selection.selectRange(this.document, lastRange);
-                lastRange = null;
-            }
-
-            if (null !== keyboardPasteEditable) {
-                keyboardPasteEditable = null;
-            }
-
-            var pasteBinElm = this.getPasteBin();
-            if (!pasteBinElm) {
-                return;
-            }
-
-            if (pasteBinElm) {
-                this.off(pasteBinElm, 'focus', stopProp);
-                this.off(pasteBinElm, 'focusin', stopProp);
-                this.off(pasteBinElm, 'focusout', stopProp);
-                this.off(pasteBinElm, 'paste', this.boundHandlePaste);
-                pasteBinElm.parentElement.removeChild(pasteBinElm);
-            }
-        },
-
-        getPasteBin: function () {
-            return this.document.getElementById(this.pasteBinId);
-        },
-
-        getPasteBinHtml: function () {
-            var pasteBinElm = this.getPasteBin();
-
-            if (!pasteBinElm) {
-                return false;
-            }
-
-            // WebKit has a nice bug where it clones the paste bin if you paste from for example notepad
-            // so we need to force plain text mode in this case
-            if (pasteBinElm.firstChild && pasteBinElm.firstChild.id === 'mcepastebin') {
-                return false;
-            }
-
-            var pasteBinHtml = pasteBinElm.innerHTML;
-
-            // If paste bin is empty try using plain text mode
-            // since that is better than nothing right
-            if (!pasteBinHtml || pasteBinHtml === pasteBinDefaultContent) {
-                return false;
-            }
-
-            return pasteBinHtml;
         },
 
         cleanPaste: function (text) {
@@ -5480,19 +4780,16 @@ MediumEditor.extensions = {};
             MediumEditor.util.insertHTMLCommand(this.document, fragmentBody.innerHTML.replace(/&nbsp;/g, ' '));
         },
 
-        // TODO (6.0): Make this an internal helper instead of member of paste handler
         isCommonBlock: function (el) {
             return (el && (el.nodeName.toLowerCase() === 'p' || el.nodeName.toLowerCase() === 'div'));
         },
 
-        // TODO (6.0): Make this an internal helper instead of member of paste handler
         filterCommonBlocks: function (el) {
             if (/^\s*$/.test(el.textContent) && el.parentNode) {
                 el.parentNode.removeChild(el);
             }
         },
 
-        // TODO (6.0): Make this an internal helper instead of member of paste handler
         filterLineBreak: function (el) {
             if (this.isCommonBlock(el.previousElementSibling)) {
                 // remove stray br's following common block elements
@@ -5506,7 +4803,6 @@ MediumEditor.extensions = {};
             }
         },
 
-        // TODO (6.0): Make this an internal helper instead of member of paste handler
         // remove an element, including its parent, if it is the only element within its parent
         removeWithParent: function (el) {
             if (el && el.parentNode) {
@@ -5518,7 +4814,6 @@ MediumEditor.extensions = {};
             }
         },
 
-        // TODO (6.0): Make this an internal helper instead of member of paste handler
         cleanupSpans: function (containerEl) {
             var i,
                 el,
@@ -5585,61 +4880,37 @@ MediumEditor.extensions = {};
         },
 
         initPlaceholders: function () {
-            this.getEditorElements().forEach(this.initElement, this);
-        },
-
-        handleAddElement: function (event, editable) {
-            this.initElement(editable);
-        },
-
-        initElement: function (el) {
-            if (!el.getAttribute('data-placeholder')) {
-                el.setAttribute('data-placeholder', this.text);
-            }
-            this.updatePlaceholder(el);
+            this.getEditorElements().forEach(function (el) {
+                if (!el.getAttribute('data-placeholder')) {
+                    el.setAttribute('data-placeholder', this.text);
+                }
+                this.updatePlaceholder(el);
+            }, this);
         },
 
         destroy: function () {
-            this.getEditorElements().forEach(this.cleanupElement, this);
-        },
-
-        handleRemoveElement: function (event, editable) {
-            this.cleanupElement(editable);
-        },
-
-        cleanupElement: function (el) {
-            if (el.getAttribute('data-placeholder') === this.text) {
-                el.removeAttribute('data-placeholder');
-            }
+            this.getEditorElements().forEach(function (el) {
+                if (el.getAttribute('data-placeholder') === this.text) {
+                    el.removeAttribute('data-placeholder');
+                }
+            }, this);
         },
 
         showPlaceholder: function (el) {
             if (el) {
-                // https://github.com/yabwe/medium-editor/issues/234
-                // In firefox, styling the placeholder with an absolutely positioned
-                // pseudo element causes the cursor to appear in a bad location
-                // when the element is completely empty, so apply a different class to
-                // style it with a relatively positioned pseudo element
-                if (MediumEditor.util.isFF && el.childNodes.length === 0) {
-                    el.classList.add('medium-editor-placeholder-relative');
-                    el.classList.remove('medium-editor-placeholder');
-                } else {
-                    el.classList.add('medium-editor-placeholder');
-                    el.classList.remove('medium-editor-placeholder-relative');
-                }
+                el.classList.add('medium-editor-placeholder');
             }
         },
 
         hidePlaceholder: function (el) {
             if (el) {
                 el.classList.remove('medium-editor-placeholder');
-                el.classList.remove('medium-editor-placeholder-relative');
             }
         },
 
         updatePlaceholder: function (el, dontShow) {
             // If the element has content, hide the placeholder
-            if (el.querySelector('img, blockquote, ul, ol, table') || (el.textContent.replace(/^\s+|\s+$/g, '') !== '')) {
+            if (el.querySelector('img, blockquote, ul, ol') || (el.textContent.replace(/^\s+|\s+$/g, '') !== '')) {
                 return this.hidePlaceholder(el);
             }
 
@@ -5659,10 +4930,6 @@ MediumEditor.extensions = {};
 
             // When the editor loses focus, check if the placeholder should be visible
             this.subscribe('blur', this.handleBlur.bind(this));
-
-            // Need to know when elements are added/removed from the editor
-            this.subscribe('addElement', this.handleAddElement.bind(this));
-            this.subscribe('removeElement', this.handleRemoveElement.bind(this));
         },
 
         handleInput: function (event, element) {
@@ -5878,10 +5145,6 @@ MediumEditor.extensions = {};
         },
 
         // Toolbar accessors
-
-        getInteractionElements: function () {
-            return this.getToolbarElement();
-        },
 
         getToolbarElement: function () {
             if (!this.toolbar) {
@@ -6109,8 +5372,13 @@ MediumEditor.extensions = {};
             }
 
             // If we don't have a 'valid' selection -> hide toolbar
-            if (!MediumEditor.selection.selectionContainsContent(this.document) ||
-                (this.allowMultiParagraphSelection === false && this.multipleBlockElementsSelected())) {
+            // Commented by Aman
+            // if (!MediumEditor.selection.selectionContainsContent(this.document) ||
+            //     (this.allowMultiParagraphSelection === false && this.multipleBlockElementsSelected())) {
+            var selectionRange = MediumEditor.selection.getSelectionRange(this.document),
+            isSelected = (selectionRange.endOffset - selectionRange.startOffset) > 0 ||
+            (selectionRange.startOffset - selectionRange.endOffset) > 0;
+            if (!isSelected || (this.allowMultiParagraphSelection === false && this.multipleBlockElementsSelected())) {
                 return this.hideToolbar();
             }
 
@@ -6208,26 +5476,30 @@ MediumEditor.extensions = {};
 
         setToolbarPosition: function () {
             var container = this.base.getFocusedElement(),
-                selection = this.window.getSelection();
+                selection = this.window.getSelection(),
+                anchorPreview;
 
             // If there isn't a valid selection, bail
             if (!container) {
                 return this;
             }
 
-            if (this.static || !selection.isCollapsed) {
+            if (this.static && !this.relativeContainer) {
+                this.showToolbar();
+                this.positionStaticToolbar(container);
+            } else if (!selection.isCollapsed) {
                 this.showToolbar();
 
                 // we don't need any absolute positioning if relativeContainer is set
                 if (!this.relativeContainer) {
-                    if (this.static) {
-                        this.positionStaticToolbar(container);
-                    } else {
-                        this.positionToolbar(selection);
-                    }
+                    this.positionToolbar(selection);
                 }
+            }
 
-                this.trigger('positionedToolbar', {}, this.base.getFocusedElement());
+            anchorPreview = this.base.getExtensionByName('anchor-preview');
+
+            if (anchorPreview && typeof anchorPreview.hidePreview === 'function') {
+                anchorPreview.hidePreview();
             }
         },
 
@@ -6313,16 +5585,23 @@ MediumEditor.extensions = {};
                 toolbarWidth = toolbarElement.offsetWidth,
                 halfOffsetWidth = toolbarWidth / 2,
                 buttonHeight = 50,
+                topValue,
                 defaultLeft = this.diffLeft - halfOffsetWidth;
 
             if (boundary.top < buttonHeight) {
                 toolbarElement.classList.add('medium-toolbar-arrow-over');
                 toolbarElement.classList.remove('medium-toolbar-arrow-under');
-                toolbarElement.style.top = buttonHeight + boundary.bottom - this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
+                topValue = buttonHeight + boundary.bottom - this.diffTop + this.window.pageYOffset - toolbarHeight;
+                toolbarElement.style.top = (topValue < 0 ? 0 : topValue) + 'px';
+                // commented by dialedin
+                //toolbarElement.style.top = boundary.top + this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
             } else {
                 toolbarElement.classList.add('medium-toolbar-arrow-under');
                 toolbarElement.classList.remove('medium-toolbar-arrow-over');
-                toolbarElement.style.top = boundary.top + this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
+                topValue = buttonHeight + boundary.bottom - this.diffTop + this.window.pageYOffset - toolbarHeight;
+                toolbarElement.style.top = (topValue < 0 ? 0 : topValue) + 'px';
+                // commented by dialedin
+                //toolbarElement.style.top = boundary.top + this.diffTop + this.window.pageYOffset - toolbarHeight + 'px';
             }
 
             if (middleBoundary < halfOffsetWidth) {
@@ -6447,11 +5726,96 @@ MediumEditor.extensions = {};
 
             // If Shift is down, outdent, otherwise indent
             if (event.shiftKey) {
+                // Aman: fixing Span tag insertion and indent and outdent issue
+                // create array of attributes for every li
+                var attrMap = {
+                    attributes: [],
+                    getNext: function () {
+                        // splicing array so that we dont need to clear them;
+                        return this.attributes.splice(0, 1)[0];
+                    }
+                };
+                MediumEditor.selection.getSelectedElements(this.options.ownerDocument).forEach(function (el) {
+                    if (el.tagName === 'LI') {
+                        attrMap.attributes.push(el.attributes);
+                    }
+                });
+
+                if (attrMap.attributes.length === 0) {
+                    var li = MediumEditor.util.getClosestTag(node, 'LI');
+                    if (li) {
+                        attrMap.attributes.push(li.attributes);
+                    }
+                }
+
+                //var style = node.style;
                 this.options.ownerDocument.execCommand('outdent', false, null);
+                clearElements.call(this, attrMap, {});
             } else {
                 this.options.ownerDocument.execCommand('indent', false, null);
             }
         }
+    }
+
+    function clearSpan(el, attrMap) {
+        //var childNode = parentNode.firstElementChild;
+        if (el.tagName.toLowerCase() === 'span' && !el.hasAttribute('type')) {
+            // move all children out of the element
+            // get li
+            var parent = el.parentNode;
+            while (el.firstChild) {
+                parent.insertBefore(el.firstChild, el);
+            }
+            // remove the empty element
+            parent.removeChild(el);
+            if (parent.style.cssText === '') {
+                Array.prototype.slice.call(attrMap.getNext()).forEach(function (item) {
+                    parent.setAttribute(item.name, item.value);
+                });
+            }
+        }
+    }
+
+    function clearStyle(el, attrMap) {
+        el.removeAttribute('style');
+        var li = MediumEditor.util.getClosestTag(el, 'LI');
+        if (li && li.attributes.length === 0) {
+            Array.prototype.slice.call(attrMap.getNext()).forEach(function (item) {
+                li.setAttribute(item.name, item.value);
+            });
+        }
+    }
+
+    function applyLiStyle(el, attrMap) {
+        Array.prototype.slice.call(attrMap.getNext()).forEach(function (item) {
+            el.setAttribute(item.name, item.value);
+        });
+    }
+
+    function clearElements(attrMap) {
+        // if user has selected multiple lines
+        var elements = MediumEditor.selection.getSelectedElements(this.options.ownerDocument);
+        if (elements.length === 0) {
+            // or if user has placed cursor at some point
+            elements.push(MediumEditor.selection.getSelectionStart(this.options.ownerDocument));
+        }
+        elements.forEach(function (el) {
+            switch (el.tagName) {
+                case 'SPAN':
+                    clearSpan.call(this, el, attrMap);
+                    break;
+                case 'B':
+                case 'I':
+                case 'U':
+                    clearStyle.call(this, el, attrMap);
+                    break;
+                case 'LI':
+                    applyLiStyle.call(this, el, attrMap);
+                    break;
+                default:
+                    break;
+            }
+        }, this);
     }
 
     function handleBlockDeleteKeydowns(event) {
@@ -6552,11 +5916,10 @@ MediumEditor.extensions = {};
             return;
         }
 
-        // https://github.com/yabwe/medium-editor/issues/994
-        // Firefox thrown an error when calling `formatBlock` on an empty editable blockContainer that's not a <div>
-        if (MediumEditor.util.isMediumEditorElement(node) && node.children.length === 0 && !MediumEditor.util.isBlockContainer(node)) {
-            this.options.ownerDocument.execCommand('formatBlock', false, 'p');
-        }
+        // commented by dialedin, because it was adding new paragraph which was protecting to apply any external changes on text.
+        // if (MediumEditor.util.isMediumEditorElement(node) && node.children.length === 0) {
+        //     this.options.ownerDocument.execCommand('formatBlock', false, 'p');
+        // }
 
         // https://github.com/yabwe/medium-editor/issues/834
         // https://github.com/yabwe/medium-editor/pull/382
@@ -6569,16 +5932,11 @@ MediumEditor.extensions = {};
             // For anchor tags, unlink
             if (tagName === 'a') {
                 this.options.ownerDocument.execCommand('unlink', false, null);
-            } else if (!event.shiftKey && !event.ctrlKey) {
-                this.options.ownerDocument.execCommand('formatBlock', false, 'p');
             }
-        }
-    }
-
-    function handleEditableInput(event, editable) {
-        var textarea = editable.parentNode.querySelector('textarea[medium-editor-textarea-id="' + editable.getAttribute('medium-editor-textarea-id') + '"]');
-        if (textarea) {
-            textarea.value = editable.innerHTML.trim();
+            // commented by dialedin, because text-block div was getting injected with paragraph
+            // else if (!event.shiftKey && !event.ctrlKey) {
+            //     this.options.ownerDocument.execCommand('formatBlock', false, 'p');
+            // }
         }
     }
 
@@ -6615,50 +5973,30 @@ MediumEditor.extensions = {};
         win._mediumEditors[this.id] = null;
     }
 
-    function createElementsArray(selector, doc, filterEditorElements) {
-        var elements = [];
-
+    function createElementsArray(selector) {
         if (!selector) {
             selector = [];
         }
         // If string, use as query selector
         if (typeof selector === 'string') {
-            selector = doc.querySelectorAll(selector);
+            selector = this.options.ownerDocument.querySelectorAll(selector);
         }
         // If element, put into array
         if (MediumEditor.util.isElement(selector)) {
             selector = [selector];
         }
+        // Convert NodeList (or other array like object) into an array
+        var elements = Array.prototype.slice.apply(selector);
 
-        if (filterEditorElements) {
-            // Remove elements that have already been initialized by the editor
-            // selecotr might not be an array (ie NodeList) so use for loop
-            for (var i = 0; i < selector.length; i++) {
-                var el = selector[i];
-                if (MediumEditor.util.isElement(el) &&
-                    !el.getAttribute('data-medium-editor-element') &&
-                    !el.getAttribute('medium-editor-textarea-id')) {
-                    elements.push(el);
-                }
+        // Loop through elements and convert textarea's into divs
+        this.elements = [];
+        elements.forEach(function (element, index) {
+            if (element.nodeName.toLowerCase() === 'textarea') {
+                this.elements.push(createContentEditable.call(this, element, index));
+            } else {
+                this.elements.push(element);
             }
-        } else {
-            // Convert NodeList (or other array like object) into an array
-            elements = Array.prototype.slice.apply(selector);
-        }
-
-        return elements;
-    }
-
-    function cleanupTextareaElement(element) {
-        var textarea = element.parentNode.querySelector('textarea[medium-editor-textarea-id="' + element.getAttribute('medium-editor-textarea-id') + '"]');
-        if (textarea) {
-            // Un-hide the textarea
-            textarea.classList.remove('medium-editor-hidden');
-            textarea.removeAttribute('medium-editor-textarea-id');
-        }
-        if (element.parentNode) {
-            element.parentNode.removeChild(element);
-        }
+        }, this);
     }
 
     function setExtensionDefaults(extension, defaults) {
@@ -6736,17 +6074,17 @@ MediumEditor.extensions = {};
         return !this.options.extensions['imageDragging'];
     }
 
-    function createContentEditable(textarea) {
+    function createContentEditable(textarea, id) {
         var div = this.options.ownerDocument.createElement('div'),
             now = Date.now(),
-            uniqueId = 'medium-editor-' + now,
+            uniqueId = 'medium-editor-' + now + '-' + id,
             atts = textarea.attributes;
 
         // Some browsers can move pretty fast, since we're using a timestamp
         // to make a unique-id, ensure that the id is actually unique on the page
         while (this.options.ownerDocument.getElementById(uniqueId)) {
             now++;
-            uniqueId = 'medium-editor-' + now;
+            uniqueId = 'medium-editor-' + now + '-' + id;
         }
 
         div.className = textarea.className;
@@ -6763,16 +6101,6 @@ MediumEditor.extensions = {};
             }
         }
 
-        // If textarea has a form, listen for reset on the form to clear
-        // the content of the created div
-        if (textarea.form) {
-            this.on(textarea.form, 'reset', function (event) {
-                if (!event.defaultPrevented) {
-                    this.resetContent(this.options.ownerDocument.getElementById(uniqueId));
-                }
-            }.bind(this));
-        }
-
         textarea.classList.add('medium-editor-hidden');
         textarea.parentNode.insertBefore(
             div,
@@ -6782,57 +6110,37 @@ MediumEditor.extensions = {};
         return div;
     }
 
-    function initElement(element, editorId) {
-        if (!element.getAttribute('data-medium-editor-element')) {
-            if (element.nodeName.toLowerCase() === 'textarea') {
-                element = createContentEditable.call(this, element);
+    function initElements() {
+        var isTextareaUsed = false;
 
-                // Make sure we only attach to editableInput once for <textarea> elements
-                if (!this.instanceHandleEditableInput) {
-                    this.instanceHandleEditableInput = handleEditableInput.bind(this);
-                    this.subscribe('editableInput', this.instanceHandleEditableInput);
-                }
-            }
-
+        this.elements.forEach(function (element, index) {
             if (!this.options.disableEditing && !element.getAttribute('data-disable-editing')) {
                 element.setAttribute('contentEditable', true);
                 element.setAttribute('spellcheck', this.options.spellcheck);
             }
-
-            // Make sure we only attach to editableKeydownEnter once for disable-return options
-            if (!this.instanceHandleEditableKeydownEnter) {
-                if (element.getAttribute('data-disable-return') || element.getAttribute('data-disable-double-return')) {
-                    this.instanceHandleEditableKeydownEnter = handleDisabledEnterKeydown.bind(this);
-                    this.subscribe('editableKeydownEnter', this.instanceHandleEditableKeydownEnter);
-                }
-            }
-
-            // if we're not disabling return, add a handler to help handle cleanup
-            // for certain cases when enter is pressed
-            if (!this.options.disableReturn && !element.getAttribute('data-disable-return')) {
-                this.on(element, 'keyup', handleKeyup.bind(this));
-            }
-
-            var elementId = MediumEditor.util.guid();
-
             element.setAttribute('data-medium-editor-element', true);
-            element.classList.add('medium-editor-element');
             element.setAttribute('role', 'textbox');
             element.setAttribute('aria-multiline', true);
-            element.setAttribute('data-medium-editor-editor-index', editorId);
-            // TODO: Merge data-medium-editor-element and medium-editor-index attributes for 6.0.0
-            // medium-editor-index is not named correctly anymore and can be re-purposed to signify
-            // whether the element has been initialized or not
-            element.setAttribute('medium-editor-index', elementId);
-            initialContent[elementId] = element.innerHTML;
+            element.setAttribute('medium-editor-index', index);
 
-            this.events.attachAllEventsToElement(element);
+            if (element.hasAttribute('medium-editor-textarea-id')) {
+                isTextareaUsed = true;
+            }
+        }, this);
+
+        if (isTextareaUsed) {
+            this.subscribe('editableInput', function (event, editable) {
+                var textarea = editable.parentNode.querySelector('textarea[medium-editor-textarea-id="' + editable.getAttribute('medium-editor-textarea-id') + '"]');
+                if (textarea) {
+                    textarea.value = this.serialize()[editable.id].value;
+                }
+            }.bind(this));
         }
-
-        return element;
     }
 
     function attachHandlers() {
+        var i;
+
         // attach to tabs
         this.subscribe('editableKeydownTab', handleTabKeydown.bind(this));
 
@@ -6845,13 +6153,26 @@ MediumEditor.extensions = {};
             this.subscribe('editableKeydownSpace', handleDisableExtraSpaces.bind(this));
         }
 
-        // Make sure we only attach to editableKeydownEnter once for disable-return options
-        if (!this.instanceHandleEditableKeydownEnter) {
-            // disabling return or double return
-            if (this.options.disableReturn || this.options.disableDoubleReturn) {
-                this.instanceHandleEditableKeydownEnter = handleDisabledEnterKeydown.bind(this);
-                this.subscribe('editableKeydownEnter', this.instanceHandleEditableKeydownEnter);
+        // disabling return or double return
+        if (this.options.disableReturn || this.options.disableDoubleReturn) {
+            this.subscribe('editableKeydownEnter', handleDisabledEnterKeydown.bind(this));
+        } else {
+            for (i = 0; i < this.elements.length; i += 1) {
+                if (this.elements[i].getAttribute('data-disable-return') || this.elements[i].getAttribute('data-disable-double-return')) {
+                    this.subscribe('editableKeydownEnter', handleDisabledEnterKeydown.bind(this));
+                    break;
+                }
             }
+        }
+
+        // if we're not disabling return, add a handler to help handle cleanup
+        // for certain cases when enter is pressed
+        if (!this.options.disableReturn) {
+            this.elements.forEach(function (element) {
+                if (!element.getAttribute('data-disable-return')) {
+                    this.on(element, 'keyup', handleKeyup.bind(this));
+                }
+            }, this);
         }
     }
 
@@ -6944,8 +6265,7 @@ MediumEditor.extensions = {};
         /*jslint regexp: true*/
         var appendAction = /^append-(.+)$/gi,
             justifyAction = /justify([A-Za-z]*)$/g, /* Detecting if is justifyCenter|Right|Left */
-            match,
-            cmdValueArgument;
+            match;
         /*jslint regexp: false*/
 
         // Actions starting with 'append-' should attempt to format a block of text ('formatBlock') using a specific
@@ -6956,21 +6276,11 @@ MediumEditor.extensions = {};
         }
 
         if (action === 'fontSize') {
-            // TODO: Deprecate support for opts.size in 6.0.0
-            if (opts.size) {
-                MediumEditor.util.deprecated('.size option for fontSize command', '.value', '6.0.0');
-            }
-            cmdValueArgument = opts.value || opts.size;
-            return this.options.ownerDocument.execCommand('fontSize', false, cmdValueArgument);
+            return this.options.ownerDocument.execCommand('fontSize', false, opts.size);
         }
 
         if (action === 'fontName') {
-            // TODO: Deprecate support for opts.name in 6.0.0
-            if (opts.name) {
-                MediumEditor.util.deprecated('.name option for fontName command', '.value', '6.0.0');
-            }
-            cmdValueArgument = opts.value || opts.name;
-            return this.options.ownerDocument.execCommand('fontName', false, cmdValueArgument);
+            return this.options.ownerDocument.execCommand('fontName', false, opts.name);
         }
 
         if (action === 'createLink') {
@@ -6994,8 +6304,33 @@ MediumEditor.extensions = {};
             return result;
         }
 
-        cmdValueArgument = opts && opts.value;
-        return this.options.ownerDocument.execCommand(action, false, cmdValueArgument);
+        // Aman: issues related with span tag insertion
+        // find li
+        var range = MediumEditor.selection.getSelectionRange(this.options.ownerDocument),
+        pnode = MediumEditor.selection.getSelectedParentElement(range),
+        style = pnode.style,
+        output = this.options.ownerDocument.execCommand(action, false, null);
+        // Aman Issue related with unwanted span tag insertion on outdent in chrome.
+        if (action === 'outdent') {
+            // find span
+            var tag = MediumEditor.selection.getSelectedParentElement(MediumEditor.selection.getSelectionRange(this.options.ownerDocument));
+            if (tag && tag.tagName.toLowerCase() === 'span') {
+                // get li tag
+                tag = tag.parentNode;
+                // find span again
+                var childNode = tag.firstElementChild;
+                if (childNode && childNode.tagName.toLowerCase() === 'span' && !childNode.hasAttribute('type')) {
+                    // move all children out of the element
+                    while (childNode.firstChild) {
+                        tag.insertBefore(childNode.firstChild, childNode);
+                    }
+                    // remove the empty element
+                    tag.removeChild(childNode);
+                    tag.cssText = style.cssText;
+                }
+            }
+        }
+        return output;
     }
 
     /* If we've just justified text within a container block
@@ -7043,8 +6378,6 @@ MediumEditor.extensions = {};
         }
     }
 
-    var initialContent = {};
-
     MediumEditor.prototype = {
         // NOT DOCUMENTED - exposed for backwards compatability
         init: function (elements, options) {
@@ -7063,19 +6396,19 @@ MediumEditor.extensions = {};
                 return;
             }
 
-            addToEditors.call(this, this.options.contentWindow);
-            this.events = new MediumEditor.Events(this);
-            this.elements = [];
-
-            this.addElements(this.origElements);
+            createElementsArray.call(this, this.origElements);
 
             if (this.elements.length === 0) {
                 return;
             }
 
             this.isActive = true;
+            addToEditors.call(this, this.options.contentWindow);
+
+            this.events = new MediumEditor.Events(this);
 
             // Call initialization helpers
+            initElements.call(this);
             initExtensions.call(this);
             attachHandlers.call(this);
         },
@@ -7105,52 +6438,45 @@ MediumEditor.extensions = {};
                 element.removeAttribute('contentEditable');
                 element.removeAttribute('spellcheck');
                 element.removeAttribute('data-medium-editor-element');
-                element.classList.remove('medium-editor-element');
                 element.removeAttribute('role');
                 element.removeAttribute('aria-multiline');
                 element.removeAttribute('medium-editor-index');
-                element.removeAttribute('data-medium-editor-editor-index');
 
                 // Remove any elements created for textareas
-                if (element.getAttribute('medium-editor-textarea-id')) {
-                    cleanupTextareaElement(element);
+                if (element.hasAttribute('medium-editor-textarea-id')) {
+                    var textarea = element.parentNode.querySelector('textarea[medium-editor-textarea-id="' + element.getAttribute('medium-editor-textarea-id') + '"]');
+                    if (textarea) {
+                        // Un-hide the textarea
+                        textarea.classList.remove('medium-editor-hidden');
+                    }
+                    if (element.parentNode) {
+                        element.parentNode.removeChild(element);
+                    }
                 }
             }, this);
             this.elements = [];
-            this.instanceHandleEditableKeydownEnter = null;
-            this.instanceHandleEditableInput = null;
 
             removeFromEditors.call(this, this.options.contentWindow);
         },
 
         on: function (target, event, listener, useCapture) {
             this.events.attachDOMEvent(target, event, listener, useCapture);
-
-            return this;
         },
 
         off: function (target, event, listener, useCapture) {
             this.events.detachDOMEvent(target, event, listener, useCapture);
-
-            return this;
         },
 
         subscribe: function (event, listener) {
             this.events.attachCustomEvent(event, listener);
-
-            return this;
         },
 
         unsubscribe: function (event, listener) {
             this.events.detachCustomEvent(event, listener);
-
-            return this;
         },
 
         trigger: function (name, data, editable) {
             this.events.triggerCustomEvent(name, data, editable);
-
-            return this;
         },
 
         delay: function (fn) {
@@ -7165,10 +6491,8 @@ MediumEditor.extensions = {};
         serialize: function () {
             var i,
                 elementid,
-                content = {},
-                len = this.elements.length;
-
-            for (i = 0; i < len; i += 1) {
+                content = {};
+            for (i = 0; i < this.elements.length; i += 1) {
                 elementid = (this.elements[i].id !== '') ? this.elements[i].id : 'element-' + i;
                 content[elementid] = {
                     value: this.elements[i].innerHTML.trim()
@@ -7215,12 +6539,12 @@ MediumEditor.extensions = {};
                 case 'fileDragging':
                     extension = new MediumEditor.extensions.fileDragging(opts);
                     break;
-                case 'fontname':
-                    extension = new MediumEditor.extensions.fontName(this.options.fontName);
-                    break;
-                case 'fontsize':
-                    extension = new MediumEditor.extensions.fontSize(opts);
-                    break;
+                // case 'fontname':
+                //     extension = new MediumEditor.extensions.fontName(this.options.fontName);
+                //     break;
+                // case 'fontsize':
+                //     extension = new MediumEditor.extensions.fontSize(opts);
+                //     break;
                 case 'keyboardCommands':
                     extension = new MediumEditor.extensions.keyboardCommands(this.options.keyboardCommands);
                     break;
@@ -7402,8 +6726,7 @@ MediumEditor.extensions = {};
 
         createLink: function (opts) {
             var currentEditor = MediumEditor.selection.getSelectionElement(this.options.contentWindow),
-                customEvent = {},
-                targetUrl;
+                customEvent = {};
 
             // Make sure the selection is within an element this editor is tracking
             if (this.elements.indexOf(currentEditor) === -1) {
@@ -7412,12 +6735,7 @@ MediumEditor.extensions = {};
 
             try {
                 this.events.disableCustomEvent('editableInput');
-                // TODO: Deprecate support for opts.url in 6.0.0
-                if (opts.url) {
-                    MediumEditor.util.deprecated('.url option for createLink', '.value', '6.0.0');
-                }
-                targetUrl = opts.url || opts.value;
-                if (targetUrl && targetUrl.trim().length > 0) {
+                if (opts.url && opts.url.trim().length > 0) {
                     var currentSelection = this.options.contentWindow.getSelection();
                     if (currentSelection) {
                         var currRange = currentSelection.getRangeAt(0),
@@ -7509,7 +6827,7 @@ MediumEditor.extensions = {};
                             }
 
                             // Creates the link in the document fragment
-                            MediumEditor.util.createLink(this.options.ownerDocument, textNodes, targetUrl.trim());
+                            MediumEditor.util.createLink(this.options.ownerDocument, textNodes, opts.url.trim());
 
                             // Chrome trims the leading whitespaces when inserting HTML, which messes up restoring the selection.
                             var leadingWhitespacesCount = (fragment.firstChild.innerHTML.match(/^\s+/) || [''])[0].length;
@@ -7521,13 +6839,13 @@ MediumEditor.extensions = {};
 
                             this.importSelection(exportedSelection);
                         } else {
-                            this.options.ownerDocument.execCommand('createLink', false, targetUrl);
+                            this.options.ownerDocument.execCommand('createLink', false, opts.url);
                         }
 
                         if (this.options.targetBlank || opts.target === '_blank') {
-                            MediumEditor.util.setTargetBlank(MediumEditor.selection.getSelectionStart(this.options.ownerDocument), targetUrl);
+                            MediumEditor.util.setTargetBlank(MediumEditor.selection.getSelectionStart(this.options.ownerDocument), opts.url);
                         } else {
-                            MediumEditor.util.removeTargetBlank(MediumEditor.selection.getSelectionStart(this.options.ownerDocument), targetUrl);
+                            MediumEditor.util.removeTargetBlank(MediumEditor.selection.getSelectionStart(this.options.ownerDocument), opts.url);
                         }
 
                         if (opts.buttonClass) {
@@ -7539,7 +6857,7 @@ MediumEditor.extensions = {};
                 if (this.options.targetBlank || opts.target === '_blank' || opts.buttonClass) {
                     customEvent = this.options.ownerDocument.createEvent('HTMLEvents');
                     customEvent.initEvent('input', true, true, this.options.contentWindow);
-                    for (var i = 0, len = this.elements.length; i < len; i += 1) {
+                    for (var i = 0; i < this.elements.length; i += 1) {
                         this.elements[i].dispatchEvent(customEvent);
                     }
                 }
@@ -7564,98 +6882,9 @@ MediumEditor.extensions = {};
             if (this.elements[index]) {
                 var target = this.elements[index];
                 target.innerHTML = html;
-                this.checkContentChanged(target);
+                this.events.updateInput(target, { target: target, currentTarget: target });
             }
-        },
-
-        getContent: function (index) {
-            index = index || 0;
-
-            if (this.elements[index]) {
-                return this.elements[index].innerHTML.trim();
-            }
-            return null;
-        },
-
-        checkContentChanged: function (editable) {
-            editable = editable || MediumEditor.selection.getSelectionElement(this.options.contentWindow);
-            this.events.updateInput(editable, { target: editable, currentTarget: editable });
-        },
-
-        resetContent: function (element) {
-            // For all elements that exist in the this.elements array, we can assume:
-            // - Its initial content has been set in the initialContent object
-            // - It has a medium-editor-index attribute which is the key value in the initialContent object
-
-            if (element) {
-                var index = this.elements.indexOf(element);
-                if (index !== -1) {
-                    this.setContent(initialContent[element.getAttribute('medium-editor-index')], index);
-                }
-                return;
-            }
-
-            this.elements.forEach(function (el, idx) {
-                this.setContent(initialContent[el.getAttribute('medium-editor-index')], idx);
-            }, this);
-        },
-
-        addElements: function (selector) {
-            // Convert elements into an array
-            var elements = createElementsArray(selector, this.options.ownerDocument, true);
-
-            // Do we have elements to add now?
-            if (elements.length === 0) {
-                return false;
-            }
-
-            elements.forEach(function (element) {
-                // Initialize all new elements (we check that in those functions don't worry)
-                element = initElement.call(this, element, this.id);
-
-                // Add new elements to our internal elements array
-                this.elements.push(element);
-
-                // Trigger event so extensions can know when an element has been added
-                this.trigger('addElement', { target: element, currentTarget: element }, element);
-            }, this);
-        },
-
-        removeElements: function (selector) {
-            // Convert elements into an array
-            var elements = createElementsArray(selector, this.options.ownerDocument),
-                toRemove = elements.map(function (el) {
-                    // For textareas, make sure we're looking at the editor div and not the textarea itself
-                    if (el.getAttribute('medium-editor-textarea-id') && el.parentNode) {
-                        return el.parentNode.querySelector('div[medium-editor-textarea-id="' + el.getAttribute('medium-editor-textarea-id') + '"]');
-                    } else {
-                        return el;
-                    }
-                });
-
-            this.elements = this.elements.filter(function (element) {
-                // If this is an element we want to remove
-                if (toRemove.indexOf(element) !== -1) {
-                    this.events.cleanupElement(element);
-                    if (element.getAttribute('medium-editor-textarea-id')) {
-                        cleanupTextareaElement(element);
-                    }
-                    // Trigger event so extensions can clean-up elements that are being removed
-                    this.trigger('removeElement', { target: element, currentTarget: element }, element);
-                    return false;
-                }
-                return true;
-            }, this);
         }
-    };
-
-    MediumEditor.getEditorFromElement = function (element) {
-        var index = element.getAttribute('data-medium-editor-editor-index'),
-            win = element && element.ownerDocument && (element.ownerDocument.defaultView || element.ownerDocument.parentWindow);
-        if (win && win._mediumEditors && win._mediumEditors[index]) {
-            return win._mediumEditors[index];
-        }
-        return null;
     };
 }());
 
@@ -7697,7 +6926,7 @@ MediumEditor.parseVersionString = function (release) {
 
 MediumEditor.version = MediumEditor.parseVersionString.call(this, ({
     // grunt-bump looks for this:
-    'version': '5.21.0'
+    'version': '5.15.0'
 }).version);
 
     return MediumEditor;

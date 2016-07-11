@@ -213,7 +213,9 @@
                 range = this.importSelectionMoveCursorPastAnchor(selectionState, range);
             }
 
-            this.selectRange(doc, range);
+            var sel = doc.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
         },
 
         // Utility method called from importSelection only
@@ -606,12 +608,16 @@
         },
 
         selectNode: function (node, doc) {
-            var range = doc.createRange();
+            var range = doc.createRange(),
+                sel = doc.getSelection();
+
             range.selectNodeContents(node);
-            this.selectRange(doc, range);
+            sel.removeAllRanges();
+            sel.addRange(range);
         },
 
         select: function (doc, startNode, startOffset, endNode, endOffset) {
+            doc.getSelection().removeAllRanges();
             var range = doc.createRange();
             range.setStart(startNode, startOffset);
             if (endNode) {
@@ -619,7 +625,7 @@
             } else {
                 range.collapse(true);
             }
-            this.selectRange(doc, range);
+            doc.getSelection().addRange(range);
             return range;
         },
 
@@ -654,13 +660,6 @@
                 return null;
             }
             return selection.getRangeAt(0);
-        },
-
-        selectRange: function (ownerDocument, range) {
-            var selection = ownerDocument.getSelection();
-
-            selection.removeAllRanges();
-            selection.addRange(range);
         },
 
         // http://stackoverflow.com/questions/1197401/how-can-i-get-the-element-the-caret-is-in-with-javascript-when-using-contentedi

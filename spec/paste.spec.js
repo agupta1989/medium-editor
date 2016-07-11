@@ -1,7 +1,5 @@
 /*global selectElementContents,
-         selectElementContentsAndFire,
-         fireEvent, prepareEvent,
-         firePreparedEvent, WORD_PASTE_EXAMPLE */
+         selectElementContentsAndFire */
 
 describe('Pasting content', function () {
     'use strict';
@@ -41,11 +39,6 @@ describe('Pasting content', function () {
                 source: 'Microsoft Word - Proprietary elements',
                 paste: '<p>One<o:p></o:p></p><p>Two<o:p></o:p></p>',
                 output: '<p>One</p><p>Two</p>'
-            },
-            {
-                source: 'Microsoft Word - full document paste',
-                paste: WORD_PASTE_EXAMPLE,
-                output: '<p>Mycomplicated <b>word document renders</b> <i>like this in the card</i> generator.</p><p>Testbig text</p><p>Testingsmaller text and <s>crossed out text.</s></p><p>·      Test list</p><p>·      Test</p><p>o  Testindented</p><p>·      Tes6t</p><p>1.     tes t test test</p><p>a.    tes t indented</p>'
             }
         ],
         inlineTests = [
@@ -124,7 +117,6 @@ describe('Pasting content', function () {
                         return;
                     },
                     clipboardData: {
-                        types: ['text/plain', 'text/html'],
                         getData: function () {
                             // do we need to return different results for the different types? text/plain, text/html
                             return this.pasteText;
@@ -164,7 +156,6 @@ describe('Pasting content', function () {
                         return;
                     },
                     clipboardData: {
-                        types: ['text/plain'],
                         getData: function (clipboardType) {
                             if (clipboardType === 'text/plain') {
                                 return 'One\n\nTwo\n\nThree';
@@ -182,30 +173,6 @@ describe('Pasting content', function () {
             jasmine.clock().tick(100);
             expect(editorEl.innerHTML).toEqual('<p>One</p><p>Two</p><p>Three</p>');
 
-        });
-
-        it('should trigger editablePaste', function () {
-            var editorEl = this.el,
-                editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                spy = jasmine.createSpy('handler');
-
-            editor.subscribe('editablePaste', spy);
-
-            // move caret to editor
-            editorEl.innerHTML = '<span id="editor-inner">&nbsp</span>';
-
-            selectElementContentsAndFire(editorEl);
-
-            expect(spy).not.toHaveBeenCalled();
-            var evt = prepareEvent(editorEl, 'paste');
-            firePreparedEvent(evt, editorEl, 'paste');
-            jasmine.clock().tick(1);
-            expect(spy).toHaveBeenCalledWith(evt, this.el);
         });
 
         it('should filter multi-line rich-text pastes when "insertHTML" command is not supported', function () {
@@ -245,312 +212,6 @@ describe('Pasting content', function () {
 
             editor.cleanPaste('<a href="http://0.0.0.0/bar.html">foo<a>');
             expect(this.el.innerHTML).toContain('target="_blank"');
-        });
-    });
-
-    describe('using keyboard', function () {
-        it('should insert a custom paste-bin on keydown of CTRL + V', function () {
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                });
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var pasteBin = contentEditables[1];
-            expect(pasteBin.innerHTML).toBe('%ME_PASTEBIN%');
-            expect(pasteBin.parentNode).toBe(document.body);
-
-            var range = document.getSelection().getRangeAt(0);
-            expect(MediumEditor.util.isDescendant(pasteBin, range.commonAncestorContainer, true)).toBe(true, 'Select is not within the paste bin');
-            expect(range.toString()).toBe('%ME_PASTEBIN%');
-        });
-
-        it('should trigger handlePasteBinPaste when pasting into paste-bin', function () {
-            spyOn(MediumEditor.extensions.paste.prototype, 'handlePasteBinPaste').and.callThrough();
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                pasteHandler = editor.getExtensionByName('paste');
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var pasteBin = contentEditables[1],
-                evt = prepareEvent(pasteBin, 'paste');
-
-            firePreparedEvent(evt, pasteBin, 'paste');
-            expect(pasteHandler.handlePasteBinPaste).toHaveBeenCalledWith(evt);
-        });
-
-        it('should fire editablePaste event when pasting', function () {
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                spy = jasmine.createSpy('handler');
-
-            editor.subscribe('editablePaste', spy);
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-            expect(spy).not.toHaveBeenCalled();
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var evt = {
-                    type: 'paste',
-                    defaultPrevented: false,
-                    preventDefault: function () {},
-                    clipboardData: {
-                        types: ['text/plain', 'text/html'],
-                        getData: function () {
-                            // do we need to return different results for the different types? text/plain, text/html
-                            return 'pasted content';
-                        }
-                    }
-                },
-                pasteExtension = editor.getExtensionByName('paste');
-
-            pasteExtension.handlePasteBinPaste(evt);
-            jasmine.clock().tick(1);
-            expect(spy).toHaveBeenCalledWith({ currentTarget: editor.elements[0], target: editor.elements[0] }, editor.elements[0]);
-        });
-
-        it('should do nothing if default was prevented on paste event of the paste-bin', function () {
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                pasteExtension = editor.getExtensionByName('paste');
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var evt = {
-                    type: 'paste',
-                    defaultPrevented: true,
-                    preventDefault: function () {},
-                    clipboardData: {
-                        types: ['text/plain', 'text/html'],
-                        getData: function () {
-                            // do we need to return different results for the different types? text/plain, text/html
-                            return 'pasted content';
-                        }
-                    }
-                };
-
-            spyOn(evt, 'preventDefault');
-
-            // Paste should insert data from the clipboard, and prevent paste from happening in the paste-bin
-            pasteExtension.handlePasteBinPaste(evt);
-            expect(evt.preventDefault).not.toHaveBeenCalled();
-            expect(this.el.innerHTML).toBe('hhh');
-
-            // paste-bin should be gone
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-        });
-
-        it('should use clipboard data if available and not allow paste to happen', function () {
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                pasteExtension = editor.getExtensionByName('paste');
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var evt = {
-                    type: 'paste',
-                    preventDefault: function () {},
-                    clipboardData: {
-                        types: ['text/plain', 'text/html'],
-                        getData: function () {
-                            // do we need to return different results for the different types? text/plain, text/html
-                            return 'pasted content';
-                        }
-                    }
-                };
-
-            spyOn(evt, 'preventDefault');
-
-            // Paste should insert data from the clipboard, and prevent paste from happening in the paste-bin
-            pasteExtension.handlePasteBinPaste(evt);
-            expect(evt.preventDefault).toHaveBeenCalled();
-            expect(this.el.innerHTML).toBe('pasted content');
-
-            // paste-bin should be gone
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-        });
-
-        it('should use html from the paste bin when clipboard data is not available', function () {
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                pasteExtension = editor.getExtensionByName('paste');
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var evt = {
-                    type: 'paste',
-                    preventDefault: function () {},
-                    clipboardData: {
-                        types: ['text/plain'],
-                        getData: function () {
-                            // do we need to return different results for the different types? text/plain, text/html
-                            return null;
-                        }
-                    }
-                },
-                testHTML = '<b>HTML from <u>paste bin</u></b>',
-                pasteBin = contentEditables[1];
-
-            pasteBin.innerHTML = testHTML;
-            spyOn(evt, 'preventDefault');
-
-            // Paste should not be prevented on the paste bin
-            pasteExtension.handlePasteBinPaste(evt);
-            expect(evt.preventDefault).not.toHaveBeenCalled();
-            jasmine.clock().tick(1);
-
-            // HTML from paste-bin should now be in the editor
-            expect(this.el.innerHTML).toMatch(new RegExp(testHTML + '(<br/?>)?'));
-
-            // paste-bin should be gone
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-        });
-
-        it('should use plain text when clipboard data is not available and paste-bin does not have real content', function () {
-            var editor = this.newMediumEditor('.editor', {
-                    paste: {
-                        forcePlainText: false,
-                        cleanPastedHTML: true
-                    }
-                }),
-                pasteExtension = editor.getExtensionByName('paste');
-
-            selectElementContentsAndFire(editor.elements[0].firstChild);
-
-            var contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
-
-            fireEvent(this.el, 'keydown', {
-                keyCode: MediumEditor.util.keyCode.V,
-                ctrlKey: true,
-                metaKey: true
-            });
-
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(2);
-
-            var evt = {
-                    type: 'paste',
-                    preventDefault: function () {},
-                    clipboardData: {
-                        types: ['text/plain'],
-                        getData: function () {
-                            // do we need to return different results for the different types? text/plain, text/html
-                            return 'Plain Text';
-                        }
-                    }
-                },
-                pasteBin = contentEditables[1];
-
-            pasteBin.innerHTML = '';
-            spyOn(evt, 'preventDefault');
-
-            // Paste should not be prevented on the paste bin
-            pasteExtension.handlePasteBinPaste(evt);
-            expect(evt.preventDefault).not.toHaveBeenCalled();
-            jasmine.clock().tick(1);
-
-            // plaintext from the clipboard should now be in the editor
-            expect(this.el.innerHTML).toBe('Plain Text');
-
-            // paste-bin should be gone
-            contentEditables = document.body.querySelectorAll('[contentEditable=true]');
-            expect(contentEditables.length).toBe(1);
         });
     });
 
@@ -744,7 +405,6 @@ describe('Pasting content', function () {
                         return;
                     },
                     clipboardData: {
-                        types: ['text/plain', 'text/html'],
                         getData: function () {
                             // do we need to return different results for the different types? text/plain, text/html
                             return this.pasteText;
